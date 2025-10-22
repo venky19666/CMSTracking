@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Device Approval Required{% endblock %}
+
+{% block content %}
+<div class="px-4 py-12">
+    <div class="max-w-2xl mx-auto bg-white shadow-lg rounded-lg p-8 text-center">
+        <div class="mb-4">
+            <i class="fas fa-mobile-alt text-yellow-500 text-4xl"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">Device Approval Required</h1>
+        <p class="text-gray-600 mb-6">Your device is pending approval by an administrator. You cannot access protected areas until this device is approved.</p>
+        <div class="bg-yellow-50 border border-yellow-200 rounded p-4 text-left">
+            <p class="text-sm text-yellow-800">Device name: {{ device.device_name or 'Unknown' }}</p>
+            <p class="text-sm text-yellow-800">Status: {% if device.is_approved %}Approved{% else %}Pending{% endif %}</p>
+            <p class="text-xs text-yellow-700 mt-2">Contact your administrator to approve this device in the Admin > Devices page.</p>
+        </div>
+        <div class="mt-6">
+            <a href="{{ url_for('logout') }}" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Logout</a>
+        </div>
+    </div>
+    <div class="text-center mt-6">
+        <a href="{{ url_for('dashboard') }}" class="text-blue-600 hover:text-blue-700">Refresh</a>
+    </div>
+{% endblock %}
+
+
+
+
+
+

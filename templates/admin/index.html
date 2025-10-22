@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - CMMC Tracking System{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6">
+    <!-- Admin Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            <i class="fas fa-cog text-blue-600 mr-2"></i>
+            Administration Panel
+        </h1>
+        <p class="text-gray-600">Manage CMMC requirements, levels, domains, and system configuration.</p>
+    </div>
+
+    <!-- Admin Dashboard Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <a href="{{ url_for('admin_requirements') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-list-check text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Requirements</dt>
+                            <dd class="text-lg font-medium text-gray-900">Manage CMMC Requirements</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Add, edit, and organize CMMC requirements across all levels and domains.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_levels') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-layer-group text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Levels</dt>
+                            <dd class="text-lg font-medium text-gray-900">Manage CMMC Levels</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Configure CMMC maturity levels and their descriptions.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_domains') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-sitemap text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Domains</dt>
+                            <dd class="text-lg font-medium text-gray-900">Manage CMMC Domains</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Configure security domains and their organizational structure.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_users') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-users-cog text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Users</dt>
+                            <dd class="text-lg font-medium text-gray-900">Authorize Users</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Approve or revoke user authorization state.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_devices') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-teal-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-desktop text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Devices</dt>
+                            <dd class="text-lg font-medium text-gray-900">Approve Devices</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Manage approved and pending devices.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_service_accounts') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-pink-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-robot text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Service Accounts</dt>
+                            <dd class="text-lg font-medium text-gray-900">Manage Tokens</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">Create/disable tokens for automated processes.</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('admin_reports') }}" class="bg-white overflow-hidden shadow-lg rounded-lg hover:shadow-xl transition-shadow duration-200">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-chart-bar text-white text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Reports</dt>
+                            <dd class="text-lg font-medium text-gray-900">System Reports</dd>
+                        </dl>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-sm text-gray-600">View system-wide compliance statistics and user activity.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">System Overview</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div class="text-center">
+                <div class="text-2xl font-bold text-blue-600 mb-1">{{ total_requirements or 0 }}</div>
+                <div class="text-sm text-gray-600">Total Requirements</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-green-600 mb-1">{{ total_levels or 3 }}</div>
+                <div class="text-sm text-gray-600">CMMC Levels</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-purple-600 mb-1">{{ total_domains or 14 }}</div>
+                <div class="text-sm text-gray-600">Security Domains</div>
+            </div>
+            <div class="text-center">
+                <div class="text-2xl font-bold text-orange-600 mb-1">{{ total_users or 0 }}</div>
+                <div class="text-sm text-gray-600">Registered Users</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="bg-white shadow-lg rounded-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Recent System Activity</h3>
+        </div>
+        <div class="p-6">
+            <div class="space-y-4">
+                <div class="flex items-center p-3 bg-blue-50 rounded-lg">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-info-circle text-blue-500"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-900">System Initialized</p>
+                        <p class="text-sm text-gray-500">CMMC Tracking System is ready for use with sample data loaded.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center p-3 bg-green-50 rounded-lg">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-check-circle text-green-500"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-900">Database Configured</p>
+                        <p class="text-sm text-gray-500">All database tables created and sample CMMC data populated.</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center p-3 bg-yellow-50 rounded-lg">
+                    <div class="flex-shrink-0">
+                        <i class="fas fa-exclamation-triangle text-yellow-500"></i>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-900">Admin Access Active</p>
+                        <p class="text-sm text-gray-500">Remember to change default admin credentials in production.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Actions -->
+    <div class="mt-8">
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button onclick="initializeSampleData()" class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition duration-200">
+                    <div class="text-center">
+                        <i class="fas fa-database text-blue-600 text-2xl mb-2"></i>
+                        <div class="font-medium text-gray-900">Reload Sample Data</div>
+                        <div class="text-sm text-gray-500">Reset database with fresh sample data</div>
+                    </div>
+                </button>
+                
+                <button onclick="exportData()" class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition duration-200">
+                    <div class="text-center">
+                        <i class="fas fa-download text-green-600 text-2xl mb-2"></i>
+                        <div class="font-medium text-gray-900">Export Data</div>
+                        <div class="text-sm text-gray-500">Download system data backup</div>
+                    </div>
+                </button>
+                
+                <button onclick="systemSettings()" class="flex items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition duration-200">
+                    <div class="text-center">
+                        <i class="fas fa-cogs text-purple-600 text-2xl mb-2"></i>
+                        <div class="font-medium text-gray-900">System Settings</div>
+                        <div class="text-sm text-gray-500">Configure system parameters</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function initializeSampleData() {
+    if (confirm('This will reset all sample data. Are you sure?')) {
+        alert('Sample data initialization feature would be implemented here.');
+    }
+}
+
+function exportData() {
+    alert('Data export feature would be implemented here.');
+}
+
+function systemSettings() {
+    alert('System settings feature would be implemented here.');
+}
+</script>
+{% endblock %}
+
+
+
+
+

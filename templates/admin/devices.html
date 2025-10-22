@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Devices - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            <i class="fas fa-desktop text-blue-600 mr-2"></i>
+            Authorized Devices
+        </h1>
+        <p class="text-gray-600">Approve or revoke devices that may access the system.</p>
+    </div>
+
+    <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Devices</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Approved</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for d in devices %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ d.user.username if d.user else 'Unassigned' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-900">{{ d.device_name or 'Unknown' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if d.is_approved %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Approved</span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M') if d.last_seen_at else '-' }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            {% if not d.is_approved %}
+                            <form method="POST" action="{{ url_for('admin_approve_device', device_id=d.id) }}" class="inline">
+                                <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded text-sm transition duration-200" type="submit">Approve</button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('admin_revoke_device', device_id=d.id) }}" class="inline">
+                                <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-sm transition duration-200" type="submit">Revoke</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+

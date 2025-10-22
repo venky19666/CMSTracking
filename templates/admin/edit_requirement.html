@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Requirement - Admin Panel{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center mb-4">
+            <a href="{{ url_for('admin_requirements') }}" class="text-gray-500 hover:text-gray-700 mr-4">
+                <i class="fas fa-arrow-left text-lg"></i>
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">
+                <i class="fas fa-edit text-blue-600 mr-2"></i>
+                Edit CMMC Requirement
+            </h1>
+        </div>
+        <p class="text-gray-600">Update the CMMC requirement details and specifications.</p>
+    </div>
+
+    <!-- Form -->
+    <div class="bg-white shadow-lg rounded-lg">
+        <form method="POST" class="space-y-6 p-6">
+            <!-- Basic Information -->
+            <div class="border-b border-gray-200 pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Basic Information</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="requirement_id" class="block text-sm font-medium text-gray-700 mb-1">
+                            Requirement ID <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="requirement_id" name="requirement_id" required
+                               value="{{ requirement.requirement_id }}"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="e.g., AC.L1-3.1.1">
+                        <p class="text-xs text-gray-500 mt-1">Unique identifier following CMMC format</p>
+                    </div>
+                    
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-gray-700 mb-1">
+                            Title <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="title" name="title" required
+                               value="{{ requirement.title }}"
+                               class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="Brief descriptive title">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Classification -->
+            <div class="border-b border-gray-200 pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Classification</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="level_id" class="block text-sm font-medium text-gray-700 mb-1">
+                            CMMC Level <span class="text-red-500">*</span>
+                        </label>
+                        <select id="level_id" name="level_id" required
+                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select CMMC Level</option>
+                            {% for level in levels %}
+                                <option value="{{ level.id }}" {% if level.id == requirement.level_id %}selected{% endif %}>
+                                    Level {{ level.level_number }} - {{ level.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="domain_id" class="block text-sm font-medium text-gray-700 mb-1">
+                            Security Domain <span class="text-red-500">*</span>
+                        </label>
+                        <select id="domain_id" name="domain_id" required
+                                class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select Security Domain</option>
+                            {% for domain in domains %}
+                                <option value="{{ domain.id }}" {% if domain.id == requirement.domain_id %}selected{% endif %}>
+                                    {{ domain.code }} - {{ domain.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="border-b border-gray-200 pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Requirement Content</h3>
+                <div class="space-y-6">
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">
+                            Description <span class="text-red-500">*</span>
+                        </label>
+                        <textarea id="description" name="description" rows="4" required
+                                  class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Detailed description of the requirement...">{{ requirement.description }}</textarea>
+                        <p class="text-xs text-gray-500 mt-1">Clear and comprehensive description of what this requirement entails</p>
+                    </div>
+                    
+                    <div>
+                        <label for="guidance" class="block text-sm font-medium text-gray-700 mb-1">
+                            Implementation Guidance
+                        </label>
+                        <textarea id="guidance" name="guidance" rows="6"
+                                  class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="Provide practical guidance on how to implement this requirement...">{{ requirement.guidance or '' }}</textarea>
+                        <p class="text-xs text-gray-500 mt-1">Best practices, recommendations, and implementation tips</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end space-x-4 pt-6">
+                <a href="{{ url_for('admin_requirements') }}" 
+                   class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg transition duration-200">
+                    Cancel
+                </a>
+                <button type="submit" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200">
+                    <i class="fas fa-save mr-2"></i>Update Requirement
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

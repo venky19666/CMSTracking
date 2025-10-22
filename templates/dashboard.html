@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - CMMC Tracking System{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Compliance Dashboard</h1>
+        <p class="text-gray-600">Welcome back, {{ user.username }}! Here's your CMMC compliance overview.</p>
+    </div>
+
+    <!-- Overall Progress Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="bg-white overflow-hidden shadow-lg rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <i class="fas fa-check text-white"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Compliant</dt>
+                            <dd class="text-lg font-medium text-gray-900">{{ summary.compliant }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow-lg rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
+                            <i class="fas fa-clock text-white"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">In Progress</dt>
+                            <dd class="text-lg font-medium text-gray-900">{{ summary.in_progress }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow-lg rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                            <i class="fas fa-times text-white"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Non-Compliant</dt>
+                            <dd class="text-lg font-medium text-gray-900">{{ summary.non_compliant }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow-lg rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
+                            <i class="fas fa-pause text-white"></i>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Not Started</dt>
+                            <dd class="text-lg font-medium text-gray-900">{{ summary.not_started }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overall Progress Bar -->
+    <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Overall Compliance Progress</h3>
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700">{{ "%.1f"|format(summary.overall_percentage) }}% Complete</span>
+            <span class="text-sm text-gray-500">{{ summary.compliant }} of {{ summary.total }} requirements</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-3">
+            <div class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: {{ summary.overall_percentage }}%"></div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <!-- Progress by Level Chart -->
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Progress by CMMC Level</h3>
+            <canvas id="levelChart" width="400" height="300"></canvas>
+        </div>
+
+        <!-- Progress by Domain Chart -->
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Progress by Domain</h3>
+            <canvas id="domainChart" width="400" height="300"></canvas>
+        </div>
+    </div>
+
+    <!-- Detailed Progress Tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Level Progress Table -->
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">CMMC Level Progress</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Compliant</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for level_num, progress in level_progress.items() %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-medium mr-2">
+                                        {{ level_num }}
+                                    </span>
+                                    Level {{ level_num }}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="w-16 bg-gray-200 rounded-full h-2 mr-3">
+                                        <div class="bg-blue-600 h-2 rounded-full" style="width: {{ progress.percentage }}%"></div>
+                                    </div>
+                                    <span class="text-sm text-gray-900">{{ "%.0f"|format(progress.percentage) }}%</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {{ progress.compliant }} / {{ progress.total }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Domain Progress Table -->
+        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Domain Progress</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Compliant</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for domain_code, progress in domain_progress.items() %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 mr-2">
+                                        {{ domain_code }}
+                                    </span>
+                                    <span class="text-sm text-gray-900">{{ progress.name }}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="w-16 bg-gray-200 rounded-full h-2 mr-3">
+                                        <div class="bg-green-600 h-2 rounded-full" style="width: {{ progress.percentage }}%"></div>
+                                    </div>
+                                    <span class="text-sm text-gray-900">{{ "%.0f"|format(progress.percentage) }}%</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {{ progress.compliant }} / {{ progress.total }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="mt-8">
+        <div class="bg-white shadow-lg rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <a href="{{ url_for('requirements') }}" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200">
+                    <i class="fas fa-list-check text-blue-600 text-xl mr-3"></i>
+                    <div>
+                        <div class="font-medium text-gray-900">View Requirements</div>
+                        <div class="text-sm text-gray-500">Browse all CMMC requirements</div>
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('requirements', level=1) }}" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200">
+                    <i class="fas fa-shield-alt text-green-600 text-xl mr-3"></i>
+                    <div>
+                        <div class="font-medium text-gray-900">Start with Level 1</div>
+                        <div class="text-sm text-gray-500">Begin with basic requirements</div>
+                    </div>
+                </a>
+                
+                <a href="#" onclick="generateReport()" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200">
+                    <i class="fas fa-file-alt text-purple-600 text-xl mr-3"></i>
+                    <div>
+                        <div class="font-medium text-gray-900">Generate Report</div>
+                        <div class="text-sm text-gray-500">Download compliance summary</div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Level Progress Chart
+const levelCtx = document.getElementById('levelChart').getContext('2d');
+const levelChart = new Chart(levelCtx, {
+    type: 'bar',
+    data: {
+        labels: [{% for level_num in level_progress.keys() %}'Level {{ level_num }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Compliance Progress (%)',
+            data: [{% for progress in level_progress.values() %}{{ progress.percentage }}{% if not loop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: [
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(16, 185, 129, 0.8)',
+                'rgba(139, 92, 246, 0.8)'
+            ],
+            borderColor: [
+                'rgba(59, 130, 246, 1)',
+                'rgba(16, 185, 129, 1)',
+                'rgba(139, 92, 246, 1)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+
+// Domain Progress Chart
+const domainCtx = document.getElementById('domainChart').getContext('2d');
+const domainChart = new Chart(domainCtx, {
+    type: 'doughnut',
+    data: {
+        labels: [{% for domain_code, progress in domain_progress.items() %}'{{ domain_code }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            data: [{% for progress in domain_progress.values() %}{{ progress.percentage }}{% if not loop.last %}, {% endif %}{% endfor %}],
+            backgroundColor: [
+                '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444',
+                '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280',
+                '#14B8A6', '#F472B6', '#A78BFA', '#FBBF24'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    usePointStyle: true,
+                    padding: 15
+                }
+            }
+        }
+    }
+});
+
+function generateReport() {
+    // This would typically trigger a report generation
+    alert('Report generation feature coming soon!');
+}
+</script>
+{% endblock %}
+
+
+
+
+
