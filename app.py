@@ -379,6 +379,12 @@ def requirements():
 
     requirements = query.all()
 
+    # Domains available for the selected level (for filter dropdown)
+    domains_for_filter = domains
+    if selected_level_id:
+        domain_ids = {r.domain_id for r in CMMCRequirement.query.filter_by(level_id=selected_level_id).all()}
+        domains_for_filter = [d for d in domains if d.id in domain_ids]
+
     # Get user's compliance records
     user_records = {}
     for record in ComplianceRecord.query.filter_by(user_id=session['user_id']).all():
@@ -421,7 +427,7 @@ def requirements():
         'requirements.html',
         requirements=requirements,
         levels=levels,
-        domains=domains,
+        domains=domains_for_filter,
         user_records=user_records,
         selected_level_id=selected_level_id,
         is_grouped_mode=is_grouped_mode,
@@ -694,11 +700,24 @@ def compliance_record(requirement_id):
         user_id=session['user_id'], 
         requirement_id=requirement_id
     ).first()
+    # Compute a safe next URL for returning after POST
+    default_next = url_for('requirements', level=requirement.level_id)
+    ref = request.referrer or ''
+    next_url = default_next
+    try:
+        # Prefer referrer if it points to requirements view
+        if '/requirements' in ref:
+            next_url = ref
+    except Exception:
+        next_url = default_next
     
     if request.method == 'POST':
         status = request.form['status']
         notes = request.form['notes']
         delete_artifact = request.form.get('delete_artifact') == 'true'
+        next_override = request.form.get('next')
+        if next_override:
+            next_url = next_override
         
         # Debug: Check what files are being uploaded
         print(f"Files in request: {list(request.files.keys())}")
@@ -720,7 +739,9 @@ def compliance_record(requirement_id):
                     print("File not found")
             except Exception as e:
                 print(f"Error deleting file: {e}")  # Log error but don't fail the request
+            # Ensure database reference is also cleared
             artifact_path = None
+            record.artifact_path = None
         else:
             # Handle artifact upload (optional)
             artifact_file = request.files.get('artifact')
@@ -759,9 +780,9 @@ def compliance_record(requirement_id):
         
         db.session.commit()
         flash('Compliance record updated successfully!', 'success')
-        return redirect(url_for('requirements'))
+        return redirect(next_url)
     
-    return render_template('compliance_record.html', requirement=requirement, record=record)
+    return render_template('compliance_record.html', requirement=requirement, record=record, next_url=next_url)
 
 @app.route('/api/compliance-summary')
 @login_required
