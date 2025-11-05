@@ -7,7 +7,7 @@
     <!-- Header -->
     <div class="mb-8">
         <div class="flex items-center mb-4">
-            <a href="{{ url_for('requirements') }}" class="text-gray-500 hover:text-gray-700 mr-4">
+            <a href="{{ next_url or url_for('requirements', level=requirement.level_id) }}" class="text-gray-500 hover:text-gray-700 mr-4">
                 <i class="fas fa-arrow-left text-lg"></i>
             </a>
             <h1 class="text-3xl font-bold text-gray-900">
@@ -262,6 +262,21 @@
             </div>
             {% endif %}
 
+            <!-- Examples -->
+            {% if requirement.examples %}
+            <div class="bg-white shadow-lg rounded-lg mt-6">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">
+                        <i class="fas fa-book-open text-blue-600 mr-2"></i>
+                        Examples
+                    </h3>
+                </div>
+                <div class="p-6">
+                    <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{{ requirement.examples }}</div>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Quick Actions -->
             <div class="bg-white shadow-lg rounded-lg mt-6">
                 <div class="px-6 py-4 border-b border-gray-200">
@@ -278,7 +293,7 @@
                         Mark as In Progress
                     </button>
                     
-                    <a href="{{ url_for('requirements') }}" class="w-full flex items-center justify-center p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200 text-sm">
+                    <a href="{{ next_url or url_for('requirements', level=requirement.level_id) }}" class="w-full flex items-center justify-center p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200 text-sm">
                         <i class="fas fa-list text-gray-600 mr-2"></i>
                         Back to All Requirements
                     </a>

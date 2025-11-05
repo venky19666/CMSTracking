@@ -3,6 +3,7 @@ import os
 import secrets
 from datetime import datetime
 from functools import wraps
+from urllib.parse import urlparse
 
 from flask import (Flask, flash, jsonify, make_response, redirect,
                    render_template, request, send_file, session, url_for)
@@ -69,6 +70,7 @@ class CMMCRequirement(db.Model):
     domain_id = db.Column(db.Integer, db.ForeignKey('cmmc_domain.id'), nullable=False)
     guidance = db.Column(db.Text)
     assessment_objectives = db.Column(db.Text)  # Store specific objectives for this requirement
+    examples = db.Column(db.Text)  # Store examples for this requirement
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     level = db.relationship('CMMCLevel', backref='requirements')
@@ -706,8 +708,13 @@ def compliance_record(requirement_id):
     next_url = default_next
     try:
         # Prefer referrer if it points to requirements view
-        if '/requirements' in ref:
-            next_url = ref
+        # Parse the referrer to check if it's a requirements page
+        if ref and '/requirements' in ref:
+            # Use the full referrer URL to preserve query parameters (level, domain filters, etc.)
+            parsed = urlparse(ref)
+            # Only use referrer if it's from the same host (security check)
+            if parsed.netloc == '' or parsed.netloc == request.host:
+                next_url = ref
     except Exception:
         next_url = default_next
     
@@ -1071,674 +1078,784 @@ def init_database():
                 "requirement_id": "AC.L2-3.1.1", "title": "Authorized Access Control [CUI Data]", "domain": "AC",
                 "description": "Limit system access to authorized users, processes acting on behalf of authorized users, and devices (including other systems).",
                 "guidance": "Maintain a list of authorized users, processes, and devices. Ensure the system is configured to grant access only to those on the approved list.",
-                "assessment_objectives": "[a] authorized users are identified;\n[b] processes acting on behalf of authorized users are identified;\n[c] devices (and other systems) authorized to connect to the system are identified;\n[d] system access is limited to authorized users;\n[e] system access is limited to processes acting on behalf of authorized users; and\n[f] system access is limited to authorized devices (including other systems)."
+                "assessment_objectives": "[a] authorized users are identified;\n[b] processes acting on behalf of authorized users are identified;\n[c] devices (and other systems) authorized to connect to the system are identified;\n[d] system access is limited to authorized users;\n[e] system access is limited to processes acting on behalf of authorized users; and\n[f] system access is limited to authorized devices (including other systems).",
+                "examples": "Example 1\nYour company maintains a list of all personnel authorized to use company information systems, including those that store, process, and transmit CUI [a]. This list is used to support identification and authentication activities conducted by IT when authorizing access to systems [a,d].\n\nExample 2\nA coworker wants to buy a new multi-function printer/scanner/fax device and make it available on the company network within the CUI enclave. You explain that the company controls system and device access to the network and will prevent network access by unauthorized systems and devices [c]. You help the coworker submit a ticket that asks for the printer to be granted access to the network, and appropriate leadership approves the device [f]."
             },
             {
                 "requirement_id": "AC.L2-3.1.2", "title": "Transaction & Function Control", "domain": "AC",
                 "description": "Limit system access to the types of transactions and functions that authorized users are permitted to execute.",
                 "guidance": "Use role-based access control (RBAC) to ensure users can only perform functions necessary for their job roles (e.g., create, read, update, delete).",
-                "assessment_objectives": "[a] the types of transactions and functions that authorized users are permitted to execute are defined; and\n[b] system access is limited to the types of transactions and functions that authorized users are permitted to execute."
+                "assessment_objectives": "[a] the types of transactions and functions that authorized users are permitted to execute are defined; and\n[b] system access is limited to the types of transactions and functions that authorized users are permitted to execute.",
+                "examples": "Example\nYour team manages DoD contracts for your company. Members of your team need to access the contract information to perform their work properly. Because some of that data contains CUI, you work with IT to set up your group's systems so that users can be assigned access based on their specific roles [a]. Each role limits whether an employee has read-access or create/read/delete/update-access [b]. Implementing this access control restricts access to CUI information unless specifically authorized."
             },
             {
                 "requirement_id": "AC.L2-3.1.3", "title": "Control CUI Flow", "domain": "AC",
                 "description": "Control the flow of CUI in accordance with approved authorizations.",
                 "guidance": "Implement network segmentation and data flow controls to ensure CUI moves only between authorized systems according to security policies.",
-                "assessment_objectives": "[a] security policies for CUI flow are defined;\n[b] CUI flow between connected systems is controlled according to security policies; and\n[c] CUI flow controls are implemented and enforced."
+                "assessment_objectives": "[a] security policies for CUI flow are defined;\n[b] CUI flow between connected systems is controlled according to security policies; and\n[c] CUI flow controls are implemented and enforced.",
+                "examples": "Example 1\nYou configure a proxy device on your company's network. CUI is stored within this environment. Your goal is to better mask and protect the devices inside the network while enforcing information flow policies. After the device is configured, information does not flow directly from the internal network to the internet. The proxy device intercepts the traffic and analyzes it to determine if the traffic conforms to organization information flow control policies. If it does, the device allows the information to pass to its destination [b]. The proxy blocks traffic that does not meet policy requirements [e].\n\nExample 2\nAs a subcontractor on a DoD contract, your organization sometimes needs to transmit CUI to the prime contractor. You create a policy document that specifies who is allowed to transmit CUI and that such transmission requires manager approval [a,c,d]. The policy instructs users to encrypt any CUI transmitted via email or to use a designated secure file sharing utility [b,d]. The policy states"
             },
             {
                 "requirement_id": "AC.L2-3.1.4", "title": "Separation of Duties", "domain": "AC",
                 "description": "Separate the duties of individuals to reduce the risk of malevolent activity without collusion.",
                 "guidance": "Ensure that no single individual has complete control over critical functions. Separate authorization, execution, and verification duties.",
-                "assessment_objectives": "[a] duties are identified and documented;\n[b] duties are separated to reduce risk of malevolent activity; and\n[c] separation of duties is enforced through system controls."
+                "assessment_objectives": "[a] duties are identified and documented;\n[b] duties are separated to reduce risk of malevolent activity; and\n[c] separation of duties is enforced through system controls.",
+                "examples": "Example 1\nYou are responsible for the management of several key systems within your organization including some that process CUI. You assign the task of reviewing the system logs to two different people. This way, no one person is solely responsible for the execution of this critical security function [c].\n\nExample 2\nYou are a system administrator. Human Resources notifies you of a new hire, and you create an account with general privileges, but you are not allowed to grant access to systems that contain CUI [a,b]. The program manager contacts the team in your organization that has system administration authority over the CUI systems and informs them which CUI the new hire will need to access. Subsequently, a second system administrator grants access privileges to the new hire [c]."
             },
             {
                 "requirement_id": "AC.L2-3.1.5", "title": "Least Privilege", "domain": "AC",
                 "description": "Employ the principle of least privilege, including for specific security functions and privileged accounts.",
                 "guidance": "Grant users only the minimum access necessary to perform their job functions. Regularly review and revoke unnecessary privileges.",
-                "assessment_objectives": "[a] least privilege principle is defined;\n[b] user access is limited to minimum necessary privileges;\n[c] privileged account access is limited to minimum necessary; and\n[d] least privilege is enforced through system controls."
+                "assessment_objectives": "[a] least privilege principle is defined;\n[b] user access is limited to minimum necessary privileges;\n[c] privileged account access is limited to minimum necessary; and\n[d] least privilege is enforced through system controls.",
+                "examples": "Example\nYou create accounts for an organization that processes CUI. By default, everyone is assigned a basic user role, which prevents a user from modifying system configurations. Privileged access is only assigned to users and processes that require it to carry out job functions, such as IT staff, and is very selectively granted [b,d]."
             },
             {
                 "requirement_id": "AC.L2-3.1.6", "title": "Non-Privileged Account Use", "domain": "AC",
                 "description": "Use non-privileged accounts or roles when accessing nonsecurity functions.",
                 "guidance": "Use standard user accounts for daily operations. Only use administrative accounts when performing administrative tasks.",
-                "assessment_objectives": "[a] non-privileged accounts are used for non-security functions;\n[b] privileged accounts are used only when necessary; and\n[c] account usage is monitored and enforced."
+                "assessment_objectives": "[a] non-privileged accounts are used for non-security functions;\n[b] privileged accounts are used only when necessary; and\n[c] account usage is monitored and enforced.",
+                "examples": "Example\nYour organization handles CUI and has put security controls in place that prevent non-privileged users from performing privileged activities [a,b,c]. However, a standard user was accidentally given elevated system administrator privileges. The organization has implemented an endpoint detection and response solution that provides visibility into the use of privileged activities. The monitoring system logs a security misconfiguration because the use of administrative privileges was performed by a user who was not known to have that ability. This allows you to correct the error [d]."
             },
             {
                 "requirement_id": "AC.L2-3.1.7", "title": "Privileged Functions", "domain": "AC",
                 "description": "Prevent non-privileged users from executing privileged functions and capture the execution of such functions in audit logs.",
                 "guidance": "Implement controls to prevent standard users from executing administrative functions. Log all attempts to execute privileged functions.",
-                "assessment_objectives": "[a] privileged functions are identified;\n[b] non-privileged users are prevented from executing privileged functions;\n[c] execution of privileged functions is captured in audit logs; and\n[d] privileged function execution is monitored."
+                "assessment_objectives": "[a] privileged functions are identified;\n[b] non-privileged users are prevented from executing privileged functions;\n[c] execution of privileged functions is captured in audit logs; and\n[d] privileged function execution is monitored.",
+                "examples": "Example\nYour organization handles CUI and has put security controls in place that prevent non-privileged users from performing privileged activities [a,b,c]. However, a standard user was accidentally given elevated system administrator privileges. The organization has implemented an endpoint detection and response solution that provides visibility into the use of privileged activities. The monitoring system logs a security misconfiguration because the use of administrative privileges was performed by a user who was not known to have that ability. This allows you to correct the error [d]."
             },
             {
                 "requirement_id": "AC.L2-3.1.8", "title": "Unsuccessful Logon Attempts", "domain": "AC",
                 "description": "Limit unsuccessful logon attempts.",
                 "guidance": "Implement account lockout policies after a specified number of failed login attempts to prevent brute force attacks.",
-                "assessment_objectives": "[a] maximum number of unsuccessful logon attempts is defined;\n[b] unsuccessful logon attempts are limited to the defined maximum; and\n[c] account lockout mechanisms are implemented and enforced."
+                "assessment_objectives": "[a] maximum number of unsuccessful logon attempts is defined;\n[b] unsuccessful logon attempts are limited to the defined maximum; and\n[c] account lockout mechanisms are implemented and enforced.",
+                "examples": "Example\nYou attempt to log on to your work computer, which stores CUI. You mistype your password three times in a row, and an error message is generated telling you the account is locked [b]. You call your IT help desk or system administrator to request assistance. The system administrator explains that the account is locked as a result of three unsuccessful logon attempts [a]. The administrator offers to unlock the account and notes that you can wait 30 minutes for the account to unlock automatically."
             },
             {
                 "requirement_id": "AC.L2-3.1.9", "title": "Privacy & Security Notices", "domain": "AC",
                 "description": "Provide privacy and security notices consistent with applicable CUI rules.",
                 "guidance": "Display appropriate privacy and security notices to users accessing systems containing CUI, consistent with applicable regulations.",
-                "assessment_objectives": "[a] privacy and security notice requirements are defined;\n[b] privacy and security notices are provided to users;\n[c] notices are consistent with applicable CUI rules; and\n[d] notice compliance is monitored."
+                "assessment_objectives": "[a] privacy and security notice requirements are defined;\n[b] privacy and security notices are provided to users;\n[c] notices are consistent with applicable CUI rules; and\n[d] notice compliance is monitored.",
+                "examples": "Example\nYou are setting up IT equipment including a database server that will contain CUI. You have worked with legal counsel to draft a notification. It contains both general and specific CUI security and privacy requirements [a]. The system displays the required security and privacy information before anyone logs on to your organization's computers that contain or provide access to CUI [b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.10", "title": "Session Lock", "domain": "AC",
                 "description": "Use session lock with pattern-hiding displays to prevent access and viewing of data after a period of inactivity.",
                 "guidance": "Configure workstations to automatically lock after a period of inactivity. Use screensavers that hide the display content.",
-                "assessment_objectives": "[a] session lock timeout is defined;\n[b] session locks are implemented with pattern-hiding displays;\n[c] session locks activate after period of inactivity; and\n[d] session lock controls are enforced."
+                "assessment_objectives": "[a] session lock timeout is defined;\n[b] session locks are implemented with pattern-hiding displays;\n[c] session locks activate after period of inactivity; and\n[d] session lock controls are enforced.",
+                "examples": "Example\nYou manage systems for an organization that stores, processes, and transmits CUI. You notice that employees leave their offices without locking their computers. Sometimes their screens display sensitive company information. You configure all machines to lock after five minutes of inactivity [a,b]. You also remind your coworkers to lock their systems when they walk away [a]."
             },
             {
                 "requirement_id": "AC.L2-3.1.11", "title": "Session Termination", "domain": "AC",
                 "description": "Terminate (automatically) a user session after a defined condition.",
                 "guidance": "Implement automatic session termination for conditions like end of workday, maximum session time, or security events.",
-                "assessment_objectives": "[a] session termination conditions are defined;\n[b] user sessions are terminated upon meeting defined conditions;\n[c] session termination is automated where possible; and\n[d] session termination is logged and monitored."
+                "assessment_objectives": "[a] session termination conditions are defined;\n[b] user sessions are terminated upon meeting defined conditions;\n[c] session termination is automated where possible; and\n[d] session termination is logged and monitored.",
+                "examples": "Example 1\nYou manage systems containing CUI for your organization and configure the system to terminate all user sessions after 1 hour of inactivity [a]. As the session timeout approaches, the system prompts users with a warning banner asking if they want to continue the session. When the session timeout does occur, the login page pops up, and the users must log in to start a new session [b].\n\nExample 2\nA user is logged into a corporate database containing CUI but is not authorized to view CUI. The user has submitted a series of queries that unintentionally violate policy, as they attempt to extract CUI that the user is not authorized to view [a]. The session terminates with a warning as a result of a violation of corporate policy [b]. The user must reestablish the session before being able to submit additional legitimate queries."
             },
             {
                 "requirement_id": "AC.L2-3.1.12", "title": "Control Remote Access", "domain": "AC",
                 "description": "Monitor and control remote access sessions.",
                 "guidance": "Use VPNs and remote access controls. Monitor all remote connections and log remote access activities.",
-                "assessment_objectives": "[a] remote access sessions are monitored;\n[b] remote access sessions are controlled;\n[c] remote access activities are logged; and\n[d] remote access is limited to authorized users and systems."
+                "assessment_objectives": "[a] remote access sessions are permitted;\n[b] the types of permitted remote access are identified;\n[c] remote access sessions are controlled; and\n[d] remote access sessions are monitored.",
+                "examples": "Example\nYou often need to work from remote locations, such as your home or client sites, and you are permitted to access your organization's internal networks (including a network containing CUI) from those remote locations [a]. A system administrator issues you a company laptop with VPN software installed, which is required to connect to the networks remotely [b]. After the laptop connects to the VPN server, you must accept a privacy notice that states that the company's security department may monitor the connection. This monitoring is achieved through the analysis of data from sensors on the network notifying IT if issues arise. The security department may also review audit logs to see who is connecting remotely, when, and what information they are accessing [d]. During session establishment, the message \"Verifying Compliance\" means software like a Device Health Check (DHC) application is checking the remote device to ensure it meets the established requirements to connect [c]."
             },
             {
                 "requirement_id": "AC.L2-3.1.13", "title": "Remote Access Confidentiality", "domain": "AC",
                 "description": "Employ cryptographic mechanisms to protect the confidentiality of remote access sessions.",
                 "guidance": "Use strong encryption for all remote access sessions, including VPN connections and remote desktop sessions.",
-                "assessment_objectives": "[a] cryptographic mechanisms are implemented;\n[b] remote access sessions are encrypted;\n[c] encryption strength is appropriate; and\n[d] cryptographic protection is monitored."
+                "assessment_objectives": "[a] cryptographic mechanisms to protect the confidentiality of remote access sessions are identified; and\n[b] cryptographic mechanisms to protect the confidentiality of remote access sessions are implemented.",
+                "examples": "Example\nYou are responsible for implementing a remote network access capability for users who access CUI remotely. In order to provide session confidentiality, you decide to implement a VPN mechanism and select a product that has completed FIPS 140 validation [a,b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.14", "title": "Remote Access Routing", "domain": "AC",
                 "description": "Route remote access via managed access control points.",
                 "guidance": "Ensure all remote access connections are routed through approved and monitored access control points.",
-                "assessment_objectives": "[a] access control points are identified and managed;\n[b] remote access is routed through managed control points;\n[c] routing is enforced through network configuration; and\n[d] routing compliance is monitored."
+                "assessment_objectives": "[a] managed access control points are identified and implemented; and\n[b] remote access is routed through managed network access control points.",
+                "examples": "Example\nYou manage systems for a company that processes CUI at multiple locations, and several employees at different locations need to connect to the organization's networks while working remotely. Because each company location has a direct connection to headquarters, you decide to route all remote access through the headquarters location [a]. All remote traffic is routed through a single location to simplify monitoring [b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.15", "title": "Privileged Remote Access", "domain": "AC",
                 "description": "Authorize remote execution of privileged commands and remote access to security-relevant information.",
                 "guidance": "Implement additional authorization requirements for remote execution of privileged commands and access to sensitive information.",
-                "assessment_objectives": "[a] remote execution authorization requirements are defined;\n[b] remote execution of privileged commands is authorized;\n[c] remote access to security-relevant information is authorized; and\n[d] authorization is logged and monitored."
+                "assessment_objectives": "[a] privileged commands authorized for remote execution are identified;\n[b] security-relevant information authorized to be accessed remotely is identified;\n[c] the execution of the identified privileged commands via remote access is authorized; and\n[d] access to the identified security-relevant information via remote access is authorized.",
+                "examples": "Example\nYour company's Access Control Policy permits certain work roles to remotely perform a limited set of privileged commands from company-owned computers [a]. You implement controls to enforce who can remotely execute a privileged command, which privileged commands they can execute, and who is allowed access to security relevant information such as audit log configuration settings [a,c,d]."
             },
             {
                 "requirement_id": "AC.L2-3.1.16", "title": "Wireless Access Authorization", "domain": "AC",
                 "description": "Authorize wireless access prior to allowing such connections.",
                 "guidance": "Implement wireless access authorization processes to approve devices before they can connect to wireless networks.",
-                "assessment_objectives": "[a] wireless access authorization procedures are defined;\n[b] wireless access is authorized prior to connection;\n[c] unauthorized wireless access is prevented; and\n[d] wireless access authorization is monitored."
+                "assessment_objectives": "[a] wireless access points are identified; and\n[b] wireless access is authorized prior to allowing such connections.",
+                "examples": "Example\nYour company is implementing a wireless network at its headquarters. CUI may be transmitted on this network. You work with management to draft a policy about the use of the wireless network. The policy states that only company-approved devices that contain verified security configuration settings are allowed to connect. The policy also includes usage restrictions that must be followed for anyone who wants to use the wireless network. Authorization is required before devices are allowed to connect to the wireless network [b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.17", "title": "Wireless Access Protection", "domain": "AC",
                 "description": "Protect wireless access using authentication and encryption.",
                 "guidance": "Use WPA3 or WPA2 encryption for wireless networks. Implement strong authentication for wireless access.",
-                "assessment_objectives": "[a] wireless access authentication is implemented;\n[b] wireless access encryption is implemented;\n[c] wireless access is protected from unauthorized use; and\n[d] wireless access security is monitored."
+                "assessment_objectives": "[a] wireless access to the system is protected using authentication; and\n[b] wireless access to the system is protected using encryption.",
+                "examples": "Example 1\nYou manage the wireless network at a small company and are installing a new wireless solution that may transmit CUI. You start by selecting a product that employs encryption validated against the FIPS 140 standard. You configure the wireless solution to use WPA2, requiring users to enter a pre-shared key to connect to the wireless network [a,b].\n\nExample 2\nYou manage the wireless network at a large company and are installing a new wireless solution that may transmit CUI. You start by selecting a product that employs encryption that is validated against the FIPS 140 standard. Because of the size of your workforce, you configure the wireless system to authenticate users with a RADIUS server. Users must provide the wireless system with their domain usernames and passwords to be able to connect, and the RADIUS server verifies those credentials. Users unable to authenticate are denied access [a,b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.18", "title": "Mobile Device Connection", "domain": "AC",
                 "description": "Control connection of mobile devices.",
                 "guidance": "Implement mobile device management (MDM) solutions to control and monitor access to mobile devices that handle FCI or CUI.",
-                "assessment_objectives": "[a] mobile device connection controls are implemented;\n[b] mobile device access is monitored;\n[c] mobile device security policies are enforced; and\n[d] mobile device compliance is assessed."
+                "assessment_objectives": "[a] mobile devices that process, store, or transmit CUI are identified;\n[b] mobile device connections are authorized; and\n[c] mobile device connections are monitored and logged.",
+                "examples": "Example\nYour organization has a policy stating that all mobile devices, including iPads, tablets, mobile phones, and Personal Digital Assistants (PDAs), must be approved and registered with the IT department before connecting to the network that contains CUI. The IT department uses a Mobile Device Management solution to monitor mobile devices and enforce policies across the enterprise [b,c]."
             },
             {
                 "requirement_id": "AC.L2-3.1.19", "title": "Encrypt CUI on Mobile", "domain": "AC",
                 "description": "Encrypt CUI on mobile devices and mobile computing platforms.",
                 "guidance": "Use device encryption and secure containers to protect CUI on mobile devices. Implement remote wipe capabilities.",
-                "assessment_objectives": "[a] CUI encryption on mobile devices is implemented;\n[b] mobile device encryption is enforced;\n[c] secure containers are used for CUI; and\n[d] mobile device security is monitored."
+                "assessment_objectives": "[a] mobile devices and mobile computing platforms that process, store, or transmit CUI are identified; and\n[b] encryption is employed to protect CUI on identified mobile devices and mobile computing platforms.",
+                "examples": "Example\nYou are in charge of mobile device security for a company that processes CUI. You configure all laptops to use the full-disk encryption technology built into the operating system. This approach is FIPS-validated and encrypts all files, folders, and volumes.\n\nPhones and tablets pose a greater technical challenge with their wide range of manufacturers and operating systems. You select a proprietary mobile device management (MDM) solution to enforce FIPS-validated encryption on those devices [a,b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.20", "title": "External Connections [CUI Data]", "domain": "AC",
                 "description": "Verify and control/limit connections to and use of external systems.",
                 "guidance": "Use firewalls and connection policies to manage connections between your network and external ones. Control access from personally owned devices.",
-                "assessment_objectives": "[a] connections to external systems are identified;\n[b] the use of external systems is identified;\n[c] connections to external systems are verified;\n[d] the use of external systems is verified; and\n[e] connections to external systems are controlled/limited."
+                "assessment_objectives": "[a] connections to external systems are identified;\n[b] the use of external systems is identified;\n[c] connections to external systems are verified;\n[d] the use of external systems is verified; and\n[e] connections to external systems are controlled/limited.",
+                "examples": "Example\nYour company has a project that contains CUI. You remind your coworkers of the policy requirement to use their company laptops, not personal laptops or tablets, when working remotely on the project [b,f]. You also remind everyone to work from the cloud environment that is approved for processing and storing CUI rather than the other collaborative tools that may be used for other projects [b,f]."
             },
             {
                 "requirement_id": "AC.L2-3.1.21", "title": "Portable Storage Use", "domain": "AC",
                 "description": "Limit use of portable storage devices on external systems.",
                 "guidance": "Implement controls to limit or prevent the use of portable storage devices like USB drives on external systems.",
-                "assessment_objectives": "[a] portable storage device policies are defined;\n[b] use of portable storage devices on external systems is limited;\n[c] portable storage device controls are enforced; and\n[d] portable storage device usage is monitored."
+                "assessment_objectives": "[a] the use of portable storage devices containing CUI on external systems is identified and documented;\n[b] limits on the use of portable storage devices containing CUI on external systems are defined; and\n[c] the use of portable storage devices containing CUI on external systems is limited as defined.",
+                "examples": "Example\nYour organization, which stores and processes CUI, has a written portable device usage restriction policy. It states that users can only use external storage devices such as thumb dives or external hard disks that belong to the company. When needed for a specific business function, a user checks the device out from IT and returns it to IT when no longer needed [a,b]."
             },
             {
                 "requirement_id": "AC.L2-3.1.22", "title": "Control Public Information [CUI Data]", "domain": "AC",
                 "description": "Control CUI posted or processed on publicly accessible systems.",
                 "guidance": "Establish a review process to prevent CUI from being posted on public systems like company websites or forums.",
-                "assessment_objectives": "[a] individuals authorized to post or process information on publicly accessible systems are identified;\n[b] procedures to ensure CUI is not posted or processed on publicly accessible systems are identified;\n[c] a review process is in place prior to posting of any content to publicly accessible systems;\n[d] content on publicly accessible systems is reviewed to ensure that it does not include CUI; and\n[e] mechanisms are in place to remove and address improper posting of CUI."
+                "assessment_objectives": "[a] individuals authorized to post or process information on publicly accessible systems are identified;\n[b] procedures to ensure CUI is not posted or processed on publicly accessible systems are identified;\n[c] a review process is in place prior to posting of any content to publicly accessible systems;\n[d] content on publicly accessible systems is reviewed to ensure that it does not include CUI; and\n[e] mechanisms are in place to remove and address improper posting of CUI.",
+                "examples": "Example\nYour company decides to start issuing press releases about its projects in an effort to reach more potential customers. Your company receives CUI from the government as part of its DoD contract. Because you recognize the need to manage controlled information, including CUI, you meet with the employees who write the releases and post information to establish a review process [c]. It is decided that you will review press releases for CUI before posting it on the company website [a,d]. Only certain employees will be authorized to post to the website [a]."
             },
             # Awareness and Training (AT) Requirements
             {
                 "requirement_id": "AT.L2-3.2.1", "title": "Role-Based Risk Awareness", "domain": "AT",
                 "description": "Ensure that managers, systems administrators, and users of organizational systems are made aware of the security risks associated with their activities and of the applicable policies, standards, and procedures related to the security of those systems.",
                 "guidance": "Provide role-specific security awareness training that covers risks associated with each role and relevant security policies and procedures.",
-                "assessment_objectives": "[a] role-based risk awareness requirements are defined;\n[b] managers are made aware of security risks;\n[c] systems administrators are made aware of security risks;\n[d] users are made aware of security risks; and\n[e] applicable policies, standards, and procedures are communicated."
+                "assessment_objectives": "[a] security risks associated with organizational activities involving CUI are identified;\n[b] policies, standards, and procedures related to the security of the system are identified;\n[c] managers, systems administrators, and users of the system are made aware of the security risks associated with their activities; and\n[d] managers, systems administrators, and users of the system are made aware of the applicable policies, standards, and procedures related to the security of the system.",
+                "examples": "Example\nYour organization holds a DoD contract which requires the use of CUI. You want to provide information to employees so they can identify phishing emails. To do this, you prepare a presentation that highlights basic traits, including:\n\n• suspicious-looking email address or domain name;\n• a message that contains an attachment or URL; and\n• a message that is poorly written and often contains obvious misspelled words.\n\nYou encourage everyone to not click on attachments or links in a suspicious email [c]. You tell employees to forward such a message immediately to IT security [d]. You download free security awareness posters to hang in the office [c,d]. You send regular emails and tips to all employees to ensure your message is not forgotten over time [c,d]."
             },
             {
                 "requirement_id": "AT.L2-3.2.2", "title": "Role-Based Training", "domain": "AT",
                 "description": "Ensure that personnel are trained to carry out their assigned information security-related duties and responsibilities.",
                 "guidance": "Provide specialized security training for personnel with specific security responsibilities, such as system administrators and security officers.",
-                "assessment_objectives": "[a] role-based training requirements are defined;\n[b] personnel are trained for their assigned security duties;\n[c] training is tailored to specific roles; and\n[d] role-based training effectiveness is assessed."
+                "assessment_objectives": "[a] information security-related duties, roles, and responsibilities are defined;\n[b] information security-related duties, roles, and responsibilities are assigned to designated personnel; and\n[c] personnel are adequately trained to carry out their assigned information security-related duties, roles, and responsibilities.",
+                "examples": "Example\nYour company upgraded the firewall to a newer, more advanced system to protect the CUI it stores. You have been identified as an employee who needs training on the new device [a,b,c]. This will enable you to use the firewall effectively and efficiently. Your company considered training resources when it planned for the upgrade and ensured that training funds were available as part of the upgrade project [c]."
             },
             {
                 "requirement_id": "AT.L2-3.2.3", "title": "Insider Threat Awareness", "domain": "AT",
                 "description": "Provide security awareness training on recognizing and reporting potential indicators of insider threat.",
                 "guidance": "Conduct regular security awareness training that includes recognizing insider threat indicators and proper reporting procedures.",
-                "assessment_objectives": "[a] insider threat awareness training requirements are defined;\n[b] security awareness training is provided;\n[c] insider threat indicators are covered in training; and\n[d] training effectiveness is assessed."
+                "assessment_objectives": "[a] potential indicators associated with insider threats are identified; and\n[b] security awareness training on recognizing and reporting potential indicators of insider threat is provided to managers and employees.",
+                "examples": "Example\nYou are responsible for training all employees on the awareness of high-risk behaviors that can indicate a potential insider threat [b]. You educate yourself on the latest research on insider threat indicators by reviewing a number of law enforcement bulletins [a]. You then add the following example to the training package: A baseline of normal behavior for work schedules has been created. One employee's normal work schedule is 8:00 AM–5:00 PM, but another employee noticed that the employee has been working until 9:00 PM every day even though no projects requiring additional hours have been assigned [b]. The observing employee reports the abnormal work schedule using the established reporting guidelines."
             },
             # Audit and Accountability (AU) Requirements
             {
                 "requirement_id": "AU.L2-3.3.1", "title": "System Auditing", "domain": "AU",
                 "description": "Create and retain system audit logs and records to the extent needed to enable the monitoring, analysis, investigation, and reporting of unlawful or unauthorized system activity.",
                 "guidance": "Implement comprehensive audit logging for all system activities. Retain audit logs according to organizational policy and legal requirements.",
-                "assessment_objectives": "[a] audit record requirements are defined;\n[b] system audit records are created;\n[c] audit records are retained according to policy; and\n[d] audit record integrity is protected."
+                "assessment_objectives": "[a] audit logs needed (i.e., event types to be logged) to enable the monitoring, analysis, investigation, and reporting of unlawful or unauthorized system activity are specified;\n[b] the content of audit records needed to support monitoring, analysis, investigation, and reporting of unlawful or unauthorized system activity is defined;\n[c] audit records are created (generated);\n[d] audit records, once created, contain the defined content;\n[e] retention requirements for audit records are defined; and\n[f] audit records are retained as defined.",
+                "examples": "Example\nYou set up audit logging capability for your company. You determine that all systems that contain CUI must have extra detail in the audit logs. Because of this, you configure these systems to log the following information for all user actions [b,c]:\n\n• time stamps;\n• source and destination addresses;\n• user or process identifiers;\n• event descriptions;\n• success or fail indications; and\n• filenames."
             },
             {
                 "requirement_id": "AU.L2-3.3.2", "title": "User Accountability", "domain": "AU",
                 "description": "Ensure that the actions of individual system users can be uniquely traced to those users so they can be held accountable for their actions.",
                 "guidance": "Configure audit logs to capture user identification, timestamps, and actions performed. Ensure logs cannot be modified by users.",
-                "assessment_objectives": "[a] user actions are uniquely traceable;\n[b] audit records contain sufficient information for accountability;\n[c] audit record integrity is protected; and\n[d] user accountability is enforced."
+                "assessment_objectives": "[a] the content of the audit records needed to support the ability to uniquely trace users to their actions is defined; and\n[b] audit records, once created, contain the defined content.",
+                "examples": "Example\nYou manage systems for a company that stores, processes, and transmits CUI. You want to ensure that you can trace all remote access sessions to a specific user. You configure the VPN device to capture the following information for all remote access connections: source and destination IP address, user ID, machine name, time stamp, and user actions during the remote session [b]."
             },
             {
                 "requirement_id": "AU.L2-3.3.3", "title": "Event Review", "domain": "AU",
                 "description": "Review and update logged events.",
                 "guidance": "Regularly review audit logs for suspicious activities. Update logging configurations based on security requirements and threat landscape.",
-                "assessment_objectives": "[a] audit record review procedures are defined;\n[b] audit records are regularly reviewed;\n[c] logged events are updated as needed; and\n[d] audit review findings are addressed."
+                "assessment_objectives": "[a] a process for determining when to review logged events is defined;\n[b] event types being logged are reviewed in accordance with the defined review process; and\n[c] event types being logged are updated based on the review.",
+                "examples": "Example\nYou are in charge of IT operations for a company that processes CUI and are responsible for identifying and documenting which events are relevant to the security of your company's systems. Your company has decided that this list of events should be updated annually or when new security threats or events have been identified, which may require additional events to be logged and reviewed [a]. The list of events you are capturing in your logs started as the list of recommended events given by the manufacturers of your operating systems and devices, but it has grown from experience.\n\nYour company experiences a security incident, and a forensics review shows the logs appear to have been deleted by a remote user. You notice that remote sessions are not currently being logged [b]. You update the list of events to include logging all VPN sessions [c]."
             },
             {
                 "requirement_id": "AU.L2-3.3.4", "title": "Audit Failure Alerting", "domain": "AU",
                 "description": "Alert in the event of an audit logging process failure.",
                 "guidance": "Implement monitoring and alerting for audit system failures. Ensure backup audit mechanisms are in place.",
-                "assessment_objectives": "[a] audit processing failure conditions are defined;\n[b] audit processing failures are detected;\n[c] alerts are generated for audit failures; and\n[d] audit system failures are addressed promptly."
+                "assessment_objectives": "[a] personnel or roles to be alerted in the event of an audit logging process failure are identified;\n[b] types of audit logging process failures for which alert will be generated are defined; and\n[c] identified personnel or roles are alerted in the event of an audit logging process failure.",
+                "examples": "Example\nYou are in charge of IT operations for a company that processes CUI, and your responsibilities include managing the audit logging process. You configure your systems to send you an email in the event of an audit log failure. One day, you receive one of these alerts. You connect to the system, restart logging, and determine why the logging stopped [a,b,c]."
             },
             {
                 "requirement_id": "AU.L2-3.3.5", "title": "Audit Correlation", "domain": "AU",
                 "description": "Correlate audit record review, analysis, and reporting processes for investigation and response to indications of unlawful, unauthorized, suspicious, or unusual activity.",
                 "guidance": "Use security information and event management (SIEM) systems to correlate audit records across different systems and components.",
-                "assessment_objectives": "[a] audit record correlation procedures are defined;\n[b] audit records are correlated across system components;\n[c] correlation analysis is performed; and\n[d] correlation findings are reported."
+                "assessment_objectives": "[a] audit record review, analysis, and reporting processes for investigation and response to indications of unlawful, unauthorized, suspicious, or unusual activity are defined; and\n[b] defined audit record review, analysis, and reporting processes are correlated.",
+                "examples": "Example\nYou are a member of a cyber defense team responsible for audit log analysis. You run an automated tool that analyzes all the audit logs across a Local Area Network (LAN) segment simultaneously looking for similar anomalies on separate systems at separate locations. Some of these systems store CUI. After extracting anomalous information and performing a correlation analysis [b], you determine that four different systems have had their event log information cleared between 2:00 AM to 3:00 AM, although the associated dates are different. The team monitors all systems on the same LAN segment between 2:00 AM to 3:00 AM for the next 30 days."
             },
             {
                 "requirement_id": "AU.L2-3.3.6", "title": "Reduction & Reporting", "domain": "AU",
                 "description": "Provide audit record reduction and report generation to support on-demand analysis and reporting.",
                 "guidance": "Implement tools and processes for audit record reduction and automated report generation to support security analysis.",
-                "assessment_objectives": "[a] audit record reduction procedures are defined;\n[b] audit record reduction is implemented;\n[c] report generation capabilities are provided; and\n[d] on-demand analysis and reporting is supported."
+                "assessment_objectives": "[a] an audit record reduction capability that supports on-demand analysis is provided; and\n[b] a report generation capability that supports on-demand reporting is provided.",
+                "examples": "Example\nYou are in charge of IT operations in a company that processes CUI. You are responsible for providing audit record reduction and report generation capability. To support this function, you deploy an open-source solution that will collect and analyze data for signs of anomalies. The solution queries your central log repository to extract relevant data and provide you with a concise and comprehensive view for further analysis to identify potentially malicious activity [a]. In addition to creating on-demand datasets for analysis, you create customized reports explaining the contents of the data set [b]."
             },
             {
                 "requirement_id": "AU.L2-3.3.7", "title": "Authoritative Time Source", "domain": "AU",
                 "description": "Provide a system capability that compares and synchronizes internal system clocks with an authoritative source to generate time stamps for audit records.",
                 "guidance": "Configure all systems to synchronize their clocks with authoritative time sources to ensure accurate timestamps in audit records.",
-                "assessment_objectives": "[a] time synchronization requirements are defined;\n[b] system clocks are synchronized with authoritative time sources;\n[c] time synchronization is monitored; and\n[d] time synchronization accuracy is verified."
+                "assessment_objectives": "[a] internal system clocks are used to generate time stamps for audit records;\n[b] an authoritative source with which to compare and synchronize internal system clocks is specified; and\n[c] internal system clocks used to generate time stamps for audit records are compared to and synchronized with the specified authoritative time source.",
+                "examples": "Example\nYou are setting up several new computers on your company's network, which contains CUI. You update the time settings on each machine to use the same authoritative time server on the internet [b,c]. When you review audit logs, all your machines will have synchronized time, which aids in any potential security investigations."
             },
             {
                 "requirement_id": "AU.L2-3.3.8", "title": "Audit Protection", "domain": "AU",
                 "description": "Protect audit information and audit logging tools from unauthorized access, modification, and deletion.",
                 "guidance": "Implement strong access controls for audit logs and logging tools. Use encryption and integrity protection for audit data.",
-                "assessment_objectives": "[a] audit information protection requirements are defined;\n[b] audit information is protected from unauthorized access;\n[c] audit logging tools are protected; and\n[d] audit information integrity is maintained."
+                "assessment_objectives": "[a] audit information is protected from unauthorized access;\n[b] audit information is protected from unauthorized modification;\n[c] audit information is protected from unauthorized deletion;\n[d] audit logging tools are protected from unauthorized access;\n[e] audit logging tools are protected from unauthorized modification; and\n[f] audit logging tools are protected from unauthorized deletion.",
+                "examples": "Example\nYou are in charge of IT operations in a company that handles CUI. Your responsibilities include protecting audit information and audit logging tools. You protect the information from modification or deletion by having audit log events forwarded to a central server and by restricting the local audit logs to only be viewable by the system administrators [a,b,c]. Only a small group of security professionals can view the data on the central audit server [b,c,d]. For an additional layer of protection, you back up the server daily and encrypt the backups before sending them to a cloud data repository [a,b,c]."
             },
             {
                 "requirement_id": "AU.L2-3.3.9", "title": "Audit Management", "domain": "AU",
                 "description": "Limit management of audit logging functionality to a subset of privileged users.",
                 "guidance": "Restrict access to audit logging configuration and management to authorized administrators only.",
-                "assessment_objectives": "[a] privileged users for audit management are identified;\n[b] audit logging functionality access is limited to privileged users;\n[c] audit management access is monitored; and\n[d] audit management activities are logged."
+                "assessment_objectives": "[a] a subset of privileged users granted access to manage audit logging functionality is defined; and\n[b] management of audit logging functionality is limited to the defined subset of privileged users.",
+                "examples": "Example\nYou are responsible for the administration of select company infrastructure that contains CUI, but you are not responsible for managing audit information. You are not permitted to review audit logs, delete audit logs, or modify audit log settings [b]. Full control of audit logging functions has been given to senior system administrators [a,b]. This separation of system administration duties from audit logging management is necessary to prevent possible log file tampering."
             },
             # Configuration Management (CM) Requirements
             {
                 "requirement_id": "CM.L2-3.4.1", "title": "System Baselining", "domain": "CM",
                 "description": "Establish and maintain baseline configurations and inventories of organizational systems (including hardware, software, firmware, and documentation) throughout the respective system development life cycles.",
                 "guidance": "Create and maintain secure baseline configurations for all systems. Keep inventories of all organizational information systems.",
-                "assessment_objectives": "[a] baseline configuration requirements are defined;\n[b] baseline configurations are established;\n[c] system inventories are maintained; and\n[d] baseline configurations are updated as needed."
+                "assessment_objectives": "[a] a baseline configuration is established;\n[b] the baseline configuration includes hardware, software, firmware, and documentation;\n[c] the baseline configuration is maintained (reviewed and updated) throughout the system development life cycle;\n[d] a system inventory is established;\n[e] the system inventory includes hardware, software, firmware, and documentation; and\n[f] the inventory is maintained (reviewed and updated) throughout the system development life cycle.",
+                "examples": "Example\nYou are in charge of upgrading the computer operating systems of your office's computers. Some of these computers process, store, or transmit CUI. You research how to set up and configure a workstation with the least functionality and highest security and use that as the framework for creating a configuration that minimizes functionality while still allowing users to do their tasks. After testing the new baseline on a single workstation, you document this configuration and apply it to the other computers [a]. You then check to make sure that the software changes are accurately reflected in your master system inventory [e]. Finally, you set a calendar reminder to review the baseline in three months [f]."
             },
             {
                 "requirement_id": "CM.L2-3.4.2", "title": "Security Configuration Enforcement", "domain": "CM",
                 "description": "Establish and enforce security configuration settings for information technology products employed in organizational systems.",
                 "guidance": "Implement security configuration standards and enforce them across all IT products and systems.",
-                "assessment_objectives": "[a] security configuration settings are established;\n[b] security configuration settings are enforced;\n[c] IT products are configured according to standards; and\n[d] configuration compliance is monitored."
+                "assessment_objectives": "[a] security configuration settings for information technology products employed in the system are established and included in the baseline configuration; and\n[b] security configuration settings for information technology products employed in the system are enforced.",
+                "examples": "Example\nYou manage baseline configurations for your company's systems, including those that process, store, and transmit CUI. As part of this, you download a secure configuration guide for each of your asset types (servers, workstations, network components, operating systems, middleware, and applications) from a well-known and trusted IT security organization. You then apply all of the settings that you can while still ensuring the assets can perform the role for which they are needed. Once you have the configuration settings identified and tested, you document them to ensure all applicable machines can be configured the same way [a,b]."
             },
             {
                 "requirement_id": "CM.L2-3.4.3", "title": "System Change Management", "domain": "CM",
                 "description": "Track, review, approve or disapprove, and log changes to organizational systems.",
                 "guidance": "Implement formal change control processes that require approval for all system changes, including testing and rollback procedures.",
-                "assessment_objectives": "[a] change control processes are defined;\n[b] system changes are tracked;\n[c] system changes are reviewed and approved; and\n[d] system changes are logged."
+                "assessment_objectives": "[a] changes to the system are tracked;\n[b] changes to the system are reviewed;\n[c] changes to the system are approved or disapproved; and\n[d] changes to the system are logged.",
+                "examples": "Example\nOnce a month, the management and technical team leads join a change control board meeting. During this meeting, everyone reviews all proposed changes to the environment [b,c]. This includes changes to the physical and computing environments. The meeting ensures that relevant subject-matter experts review changes and propose alternatives where needed."
             },
             {
                 "requirement_id": "CM.L2-3.4.4", "title": "Security Impact Analysis", "domain": "CM",
                 "description": "Analyze the security impact of changes prior to implementation.",
                 "guidance": "Conduct security impact assessments for all proposed system changes to identify potential security risks.",
-                "assessment_objectives": "[a] security impact analysis procedures are defined;\n[b] security impact analysis is performed;\n[c] security impacts are documented; and\n[d] security impact findings are addressed."
+                "assessment_objectives": "[a] the security impact of changes to the system is analyzed prior to implementation.",
+                "examples": "Example\nYou have been asked to deploy a new web browser plug-in. Your standard change management process requires that you produce a detailed plan for the change, including a review of its potential security impact. A subject-matter expert who did not submit the change reviews the plan and tests the new plug-in for functionality and security. You update the change plan based on the expert's findings and submit it to the change control board for final approval [a]."
             },
             {
                 "requirement_id": "CM.L2-3.4.5", "title": "Access Restrictions for Change", "domain": "CM",
                 "description": "Define, document, approve, and enforce physical and logical access restrictions associated with changes to organizational systems.",
                 "guidance": "Implement access controls for system changes, including physical security for change management systems and logical access controls.",
-                "assessment_objectives": "[a] access restrictions for changes are defined;\n[b] access restrictions are documented;\n[c] access restrictions are approved; and\n[d] access restrictions are enforced."
+                "assessment_objectives": "[a] physical access restrictions associated with changes to the system are defined;\n[b] physical access restrictions associated with changes to the system are documented;\n[c] physical access restrictions associated with changes to the system are approved;\n[d] physical access restrictions associated with changes to the system are enforced;\n[e] logical access restrictions associated with changes to the system are defined;\n[f] logical access restrictions associated with changes to the system are documented;\n[g] logical access restrictions associated with changes to the system are approved; and\n[h] logical access restrictions associated with changes to the system are enforced.",
+                "examples": "Example\nYour datacenter requires expanded storage capacity in a server. The change has been approved, and security is planning to allow an external technician to access the building at a specific date and time under the supervision of a manager [a,b,c,d]. A system administrator creates a temporary privileged account that can be used to log into the server's operating system and update storage settings [e,f,g]. On the appointed day, the technician is escorted into the datacenter, upgrades the hardware, expands the storage in the operating system (OS), and departs. The manager verifies the upgrade and disables the privileged account [h]."
             },
             {
                 "requirement_id": "CM.L2-3.4.6", "title": "Least Functionality", "domain": "CM",
                 "description": "Employ the principle of least functionality by configuring organizational systems to provide only essential capabilities.",
                 "guidance": "Configure systems to provide only necessary functionality. Disable unnecessary services, ports, and protocols.",
-                "assessment_objectives": "[a] least functionality principle is applied;\n[b] system configurations provide only essential capabilities;\n[c] unnecessary functionality is disabled; and\n[d] configuration effectiveness is monitored."
+                "assessment_objectives": "[a] essential system capabilities are defined based on the principle of least functionality; and\n[b] the system is configured to provide only the defined essential capabilities.",
+                "examples": "Example\nYou have ordered a new server, which has arrived with a number of free utilities installed in addition to the operating system. Before you deploy the server, you research the utilities to determine which ones can be eliminated without impacting functionality. You remove the unneeded software, then move on to disable unused ports and services. The server that enters production therefore has only the essential capabilities enabled for the system to function in its role [a,b]."
             },
             {
                 "requirement_id": "CM.L2-3.4.7", "title": "Nonessential Functionality", "domain": "CM",
                 "description": "Restrict, disable, or prevent the use of nonessential programs, functions, ports, protocols, and services.",
                 "guidance": "Implement controls to prevent users from installing unauthorized software and using nonessential network services.",
-                "assessment_objectives": "[a] nonessential programs are restricted;\n[b] nonessential functions are disabled;\n[c] nonessential ports and protocols are blocked; and\n[d] software installation is controlled."
+                "assessment_objectives": "[a] essential programs are defined;\n[b] the use of nonessential programs is defined;\n[c] the use of nonessential programs is restricted, disabled, or prevented as defined;\n[d] essential functions are defined;\n[e] the use of nonessential functions is defined;\n[f] the use of nonessential functions is restricted, disabled, or prevented as defined;\n[g] essential ports are defined;\n[h] the use of nonessential ports is defined;\n[i] the use of nonessential ports is restricted, disabled, or prevented as defined;\n[j] essential protocols are defined;\n[k] the use of nonessential protocols is defined;\n[l] the use of nonessential protocols is restricted, disabled, or prevented as defined;\n[m] essential services are defined;\n[n] the use of nonessential services is defined; and\n[o] the use of nonessential services is restricted, disabled, or prevented as defined.",
+                "examples": "Example\nYou are responsible for purchasing new endpoint hardware, installing organizationally required software to the hardware, and configuring the endpoint in accordance with the organization's policy. The organization has a system imaging capability that loads all necessary software, but it does not remove unnecessary services, eliminate the use of certain protocols, or close unused ports. After imaging the systems, you close all ports and block the use of all protocols except the following:\n\n• TCP for SSH on port 22;\n• SMTP on port 25;\n• TCP and UDP on port 53; and\n• HTTP and HTTPS on port 443.\n\nThe use of any other ports or protocols are allowed by exception only [i,l,o]."
             },
             {
                 "requirement_id": "CM.L2-3.4.8", "title": "Application Execution Policy", "domain": "CM",
                 "description": "Apply deny-by-exception (blacklisting) policy to prevent the use of unauthorized software or deny-all, permit-by-exception (whitelisting) policy to allow the execution of authorized software.",
                 "guidance": "Implement application whitelisting or blacklisting to control software execution on organizational systems.",
-                "assessment_objectives": "[a] application execution policy is defined;\n[b] unauthorized software execution is prevented;\n[c] authorized software execution is allowed; and\n[d] application execution policy is enforced."
+                "assessment_objectives": "[a] a policy specifying whether whitelisting or blacklisting is to be implemented is specified;\n[b] the software allowed to execute under whitelisting or denied use under blacklisting is specified; and\n[c] whitelisting to allow the execution of authorized software or blacklisting to prevent the use of unauthorized software is implemented as specified.",
+                "examples": "Example\nTo improve your company's protection from malware, you have decided to allow only designated programs to run. With additional research you identify a capability within the latest operating system that can control executables, scripts, libraries, or application installers run in your environment [c]. To ensure success you begin by authorizing digitally signed executables. Once they are deployed, you then plan to evaluate and deploy whitelisting for software libraries and scripts [c]."
             },
             {
                 "requirement_id": "CM.L2-3.4.9", "title": "User-Installed Software", "domain": "CM",
                 "description": "Control and monitor user-installed software.",
                 "guidance": "Implement controls to prevent users from installing software without authorization. Use administrative privileges and software deployment tools.",
-                "assessment_objectives": "[a] user-installed software controls are implemented;\n[b] user software installation is controlled;\n[c] user software installation is monitored; and\n[d] unauthorized software installation is prevented."
+                "assessment_objectives": "[a] a policy for controlling the installation of software by users is established;\n[b] installation of software by users is controlled based on the established policy; and\n[c] installation of software by users is monitored.",
+                "examples": "Example\nYou are a system administrator. A user calls you for help installing a software package. They are receiving a message asking for a password because they do not have permission to install the software. You explain that the policy prohibits users from installing software without approval [a]. When you set up workstations for users, you do not provide administrative privileges. After the call, you redistribute the policy to all users ensuring everyone in the company is aware of the restrictions."
             },
             # Identification and Authentication (IA) Requirements
             {
                 "requirement_id": "IA.L2-3.5.1", "title": "Identification [CUI Data]", "domain": "IA",
                 "description": "Identify system users, processes acting on behalf of users, and devices.",
                 "guidance": "Assign unique identifiers (e.g., usernames) to all users, processes, and devices that require access to company systems.",
-                "assessment_objectives": "[a] system users are identified;\n[b] processes acting on behalf of users are identified; and\n[c] devices are identified."
+                "assessment_objectives": "[a] system users are identified;\n[b] processes acting on behalf of users are identified; and\n[c] devices accessing the system are identified.",
+                "examples": "Example\nYou want to make sure that all employees working on a project can access important information about it. Because this is work for the DoD and may contain CUI, you also need to prevent employees who are not working on that project from being able to access the information. You assign each employee is assigned a unique user ID, which they use to log into the system [a]."
             },
             {
                 "requirement_id": "IA.L2-3.5.2", "title": "Authentication [CUI Data]", "domain": "IA",
                 "description": "Authenticate (or verify) the identities of users, processes, or devices, as a prerequisite to allowing access to organizational systems.",
                 "guidance": "Verify identity before granting access, typically with a username and strong password. Always change default passwords on new devices and systems.",
-                "assessment_objectives": "[a] the identity of each user is authenticated or verified as a prerequisite to system access;\n[b] the identity of each process acting on behalf of a user is authenticated or verified as a prerequisite to system access; and\n[c] the identity of each device accessing or connecting to the system is authenticated or verified as a prerequisite to system access."
+                "assessment_objectives": "[a] the identity of each user is authenticated or verified as a prerequisite to system access;\n[b] the identity of each process acting on behalf of a user is authenticated or verified as a prerequisite to system access; and\n[c] the identity of each device accessing or connecting to the system is authenticated or verified as a prerequisite to system access.",
+                "examples": "Example 1\nYou are in charge of purchasing. You know that some laptops come with a default username and password. You notify IT that all default passwords should be reset prior to laptop use [a]. You ask IT to explain the importance of resetting default passwords and convey how easily they are discovered using internet searches during next week's cybersecurity awareness training.\n\nExample 2\nYour company decides to use cloud services for email and other capabilities. Upon reviewing this requirement, you realize every user or device that connects to the cloud service must be authenticated. As a result, you work with your cloud service provider to ensure that only properly authenticated users and devices are allowed to connect to the system [a,c]."
             },
             {
                 "requirement_id": "IA.L2-3.5.3", "title": "Multifactor Authentication", "domain": "IA",
                 "description": "Use multifactor authentication for local and network access to privileged accounts and for network access to non-privileged accounts.",
                 "guidance": "Implement multifactor authentication (MFA) for all privileged accounts and network access to non-privileged accounts.",
-                "assessment_objectives": "[a] multifactor authentication is implemented for privileged accounts;\n[b] multifactor authentication is implemented for network access;\n[c] MFA is enforced for all applicable accounts; and\n[d] MFA effectiveness is monitored."
+                "assessment_objectives": "[a] privileged accounts are identified;\n[b] multifactor authentication is implemented for local access to privileged accounts;\n[c] multifactor authentication is implemented for network access to privileged accounts; and\n[d] multifactor authentication is implemented for network access to non-privileged accounts.",
+                "examples": "Example\nYou decide to implement multifactor authentication (MFA) to improve the security of your network. Your first step is enabling MFA on VPN access to your internal network [c,d]. When users initiate remote access, they will be prompted for the additional authentication factor. Because you also use a cloud-based email solution, you require MFA for access to that resource as well [c,d]. Finally, you enable MFA for both local and network logins for the system administrator accounts used to patch and manage servers [a,b,c]."
             },
             {
                 "requirement_id": "IA.L2-3.5.4", "title": "Replay-Resistant Authentication", "domain": "IA",
                 "description": "Employ replay-resistant authentication mechanisms for network access to privileged and non-privileged accounts.",
                 "guidance": "Use authentication mechanisms that prevent replay attacks for all account access, such as challenge-response protocols.",
-                "assessment_objectives": "[a] replay-resistant authentication is implemented;\n[b] privileged account access uses replay-resistant mechanisms;\n[c] non-privileged account access uses replay-resistant mechanisms; and\n[d] replay attack prevention is effective."
+                "assessment_objectives": "[a] replay-resistant authentication mechanisms are implemented for network account access to privileged and non-privileged accounts.",
+                "examples": "Example\nTo protect your IT infrastructure, you understand that the methods for authentication must not be easily copied and re-sent to your systems by an adversary. You select Kerberos for authentication because of its built-in resistance to replay attacks. As a next step you upgrade all of your web applications to require Transport Layer Security (TLS), which also is replay-resistant. Your use of MFA to protect remote access also confers some replay resistance."
             },
             {
                 "requirement_id": "IA.L2-3.5.5", "title": "Identifier Reuse", "domain": "IA",
                 "description": "Prevent reuse of identifiers for a defined period.",
                 "guidance": "Implement controls to prevent reuse of user identifiers, usernames, and other identifiers for a specified period.",
-                "assessment_objectives": "[a] identifier reuse prevention period is defined;\n[b] identifier reuse is prevented;\n[c] identifier reuse controls are enforced; and\n[d] identifier reuse prevention is monitored."
+                "assessment_objectives": "[a] a period within which identifiers cannot be reused is defined; and\n[b] reuse of identifiers is prevented within the defined period.",
+                "examples": "Example\nAs a system administrator, you maintain a central directory/domain that holds the accounts for users, computers, and network devices. As part of your job, you issue unique usernames (e.g., riley@acme.com) for the staff to access resources. When you issue staff computers you also rename the computer to reflect to whom it is assigned (e.g., riley-laptop01). Riley has recently left the organization, so you must manage the former staff member's account. Incidentally, their replacement is also named Riley. In the directory, you do not assign the previous account to the new user, as policy has defined an identifier reuse period of 24 months [a]. In accordance with policy, you create an account called riley02 [b]. This account is assigned the appropriate permissions for the new user. A new laptop is also provided with the identifier of riley02-laptop01."
             },
             {
                 "requirement_id": "IA.L2-3.5.6", "title": "Identifier Handling", "domain": "IA",
                 "description": "Disable identifiers after a defined period of inactivity.",
                 "guidance": "Implement automatic disabling of user accounts and identifiers after a period of inactivity to prevent unauthorized access.",
-                "assessment_objectives": "[a] inactivity period is defined;\n[b] inactive identifiers are disabled;\n[c] identifier disabling is automated; and\n[d] identifier management is monitored."
+                "assessment_objectives": "[a] a period of inactivity after which an identifier is disabled is defined; and\n[b] identifiers are disabled after the defined period of inactivity.",
+                "examples": "Example\nOne of your responsibilities is to enforce your company's inactive account policy: any account that has not been used in the last 45 days must be disabled [a]. You enforce this by writing a script that runs once a day to check the last login date for each account and generates a report of the accounts with no login records for the last 45 days. After reviewing the report, you notify each inactive employee's supervisor and disable the account [b]."
             },
             {
                 "requirement_id": "IA.L2-3.5.7", "title": "Password Complexity", "domain": "IA",
                 "description": "Enforce a minimum password complexity and change of characters when new passwords are created.",
                 "guidance": "Implement strong password policies requiring minimum length, complexity, and character requirements.",
-                "assessment_objectives": "[a] password complexity requirements are defined;\n[b] minimum password complexity is enforced;\n[c] password character requirements are enforced; and\n[d] password policy compliance is monitored."
+                "assessment_objectives": "[a] password complexity requirements are defined;\n[b] password change of character requirements are defined;\n[c] minimum password complexity requirements as defined are enforced when new passwords are created; and\n[d] minimum password change of character requirements as defined are enforced when new passwords are created.",
+                "examples": "Example\nYou work with management to define password complexity rules and ensure they are listed in the company's security policy. You define and enforce a minimum number of characters for each password and ensure that a certain number of characters must be changed when updating passwords [a,b]. Characters include numbers, lowercase and uppercase letters, and symbols [a]. These rules help create hard-to-guess passwords, which help to secure your network."
             },
             {
                 "requirement_id": "IA.L2-3.5.8", "title": "Password Reuse", "domain": "IA",
                 "description": "Prohibit password reuse for a specified number of generations.",
                 "guidance": "Implement password history controls to prevent reuse of recent passwords for a specified number of password changes.",
-                "assessment_objectives": "[a] password reuse prevention period is defined;\n[b] password reuse is prohibited;\n[c] password history is maintained; and\n[d] password reuse prevention is enforced."
+                "assessment_objectives": "[a] the number of generations during which a password cannot be reused is specified and\n[b] reuse of passwords is prohibited during the specified number of generations.",
+                "examples": "Example\nYou explain in your company's security policy that changing passwords regularly provides increased security by reducing the ability of adversaries to exploit stolen or purchased passwords over an extended period. You define how often individuals can reuse their passwords and the minimum number of password generations before reuse [a]. If a user tries to reuse a password before the number of password generations has been exceeded, an error message is generated, and the user is required to enter a new password [b]."
             },
             {
                 "requirement_id": "IA.L2-3.5.9", "title": "Temporary Passwords", "domain": "IA",
                 "description": "Allow temporary password use for system logons with an immediate change to a permanent password.",
                 "guidance": "Implement temporary password mechanisms that require immediate change to permanent passwords upon first login.",
-                "assessment_objectives": "[a] temporary password procedures are defined;\n[b] temporary passwords are allowed for system logons;\n[c] immediate change to permanent password is required; and\n[d] temporary password usage is monitored."
+                "assessment_objectives": "[a] an immediate change to a permanent password is required when a temporary password is used for system logon.",
+                "examples": "Example\nOne of your duties as a systems administrator is to create accounts for new users. You configure all systems with user accounts to require users to change a temporary password upon initial login to a permanent password [a]. When a user logs on for the first time, they are prompted to create a unique password that meets all of the defined complexity rules."
             },
             {
                 "requirement_id": "IA.L2-3.5.10", "title": "Cryptographically-Protected Passwords", "domain": "IA",
                 "description": "Store and transmit only cryptographically-protected passwords.",
                 "guidance": "Use strong cryptographic hashing for password storage and encryption for password transmission.",
-                "assessment_objectives": "[a] password storage uses cryptographic protection;\n[b] password transmission uses cryptographic protection;\n[c] cryptographic mechanisms are appropriate; and\n[d] password protection is monitored."
+                "assessment_objectives": "[a] passwords are cryptographically protected in storage; and\n[b] passwords are cryptographically protected in transit..",
+                "examples": "Example\nYou are responsible for managing passwords for your organization. You protect all passwords with a one-way transformation, or hashing, before storing them. Passwords are never transmitted across a network unencrypted [a,b]."
             },
             {
                 "requirement_id": "IA.L2-3.5.11", "title": "Obscure Feedback", "domain": "IA",
                 "description": "Obscure feedback of authentication information.",
                 "guidance": "Implement authentication feedback mechanisms that do not reveal sensitive authentication information to unauthorized parties.",
-                "assessment_objectives": "[a] authentication feedback requirements are defined;\n[b] authentication information feedback is obscured;\n[c] sensitive information is protected; and\n[d] authentication feedback is monitored."
+                "assessment_objectives": "[a] authentication information is obscured during the authentication process.",
+                "examples": "Example\nAs a system administrator, you configure your systems to display an asterisk when users enter their passwords into a computer system [a]. For mobile devices, the password characters are briefly displayed to the user before being obscured. This prevents people from figuring out passwords by looking over someone's shoulder."
             },
             # Incident Response (IR) Requirements
             {
                 "requirement_id": "IR.L2-3.6.1", "title": "Incident Handling", "domain": "IR",
                 "description": "Establish an operational incident-handling capability for organizational systems that includes preparation, detection, analysis, containment, recovery, and user response activities.",
                 "guidance": "Develop and implement comprehensive incident response procedures covering all phases of incident handling.",
-                "assessment_objectives": "[a] incident handling capability is established;\n[b] preparation activities are defined;\n[c] detection capabilities are implemented;\n[d] analysis procedures are established;\n[e] containment procedures are defined;\n[f] recovery procedures are established; and\n[g] user response activities are defined."
+                "assessment_objectives": "[a] an operational incident-handling capability is established;\n[b] the operational incident-handling capability includes preparation;\n[c] the operational incident-handling capability includes detection;\n[d] the operational incident-handling capability includes analysis;\n[e] the operational incident-handling capability includes containment;\n[f] the operational incident-handling capability includes recovery; and\n[g] the operational incident-handling capability includes user response activities.",
+                "examples": "Example\nYour manager asks you to set up your company's incident-response capability [a]. First, you create an email address to collect information on possible incidents. Next, you draft a contact list of all the people who need to know when an incident occurs. You document a procedure for how to submit incidents that includes roles and responsibilities when a potential incident is detected or reported. The procedure also explains how to track incidents, from initial creation to closure [b]."
             },
             {
                 "requirement_id": "IR.L2-3.6.2", "title": "Incident Reporting", "domain": "IR",
                 "description": "Track, document, and report incidents to designated officials and/or authorities both internal and external to the organization.",
                 "guidance": "Implement incident tracking and reporting systems to ensure proper documentation and escalation of security incidents.",
-                "assessment_objectives": "[a] incident tracking procedures are defined;\n[b] incidents are documented;\n[c] incidents are reported to designated officials;\n[d] external reporting requirements are met; and\n[e] incident reporting is monitored."
+                "assessment_objectives": "[a] incidents are tracked;\n[b] incidents are documented;\n[c] authorities to whom incidents are to be reported are identified;\n[d] organizational officials to whom incidents are to be reported are identified;\n[e] identified authorities are notified of incidents; and\n[f] identified organizational officials are notified of incidents.",
+                "examples": "Example\nYou notice unusual activity on a server and determine a potential security incident has occurred. You open a tracking ticket with the Security Operations Center (SOC), which assigns an incident handler to work the ticket [a]. The handler investigates and documents initial findings, which lead to a determination that unauthorized access occurred on the server [b]. The SOC establishes an incident management team consisting of security, database, network, and system administrators. The team meets daily to update progress and plan courses of action to contain the incident [a]. At the end of the day, the team provides a status report to IT executives [d,f]. Two days later, the team declares the incident contained. The team produces a final report as the database system is rebuilt and placed back into operation."
             },
             {
                 "requirement_id": "IR.L2-3.6.3", "title": "Incident Response Testing", "domain": "IR",
                 "description": "Test the organizational incident response capability.",
                 "guidance": "Conduct regular testing of incident response procedures through tabletop exercises and simulations.",
-                "assessment_objectives": "[a] incident response testing procedures are defined;\n[b] incident response capability is tested;\n[c] test results are documented; and\n[d] improvements are implemented based on test results."
+                "assessment_objectives": "[a] the incident response capability is tested.",
+                "examples": "Example\nYou decide to conduct an incident response table top exercise that simulates an attacker gaining access to the network through a compromised server. You include relevant IT staff such as security, database, network, and system administrators as participants. You also request representatives from legal, human resources, and communications. You provide a scenario to the group and have prepared key questions aligned with the response plans to guide the exercise. During the exercise, you focus on how the team executes the incident response plan. Afterward, you conduct a debrief with everyone that was involved to provide feedback and develop improvements to the incident response plan [a]."
             },
             # Maintenance (MA) Requirements
             {
                 "requirement_id": "MA.L2-3.7.1", "title": "Perform Maintenance", "domain": "MA",
                 "description": "Perform maintenance on organizational systems.",
                 "guidance": "Establish and follow regular maintenance schedules for all organizational systems to ensure proper operation and security.",
-                "assessment_objectives": "[a] maintenance procedures are defined;\n[b] maintenance schedules are established;\n[c] maintenance is performed according to schedule; and\n[d] maintenance activities are documented."
+                "assessment_objectives": "[a] system maintenance is performed.",
+                "examples": "Example\nYou are responsible for maintenance activities on your company's machines. This includes regular planned maintenance, unscheduled maintenance, reconfigurations when required, and damage repairs [a]. You know that failing to conduct maintenance activities can impact system security and availability, so you ensure that maintenance is regularly performed. You track all maintenance performed to assist with troubleshooting later if needed."
             },
             {
                 "requirement_id": "MA.L2-3.7.2", "title": "System Maintenance Control", "domain": "MA",
                 "description": "Provide controls on the tools, techniques, mechanisms, and personnel used to conduct system maintenance.",
                 "guidance": "Implement controls to ensure only authorized personnel use approved tools and techniques for system maintenance.",
-                "assessment_objectives": "[a] maintenance control procedures are defined;\n[b] maintenance tools are controlled;\n[c] maintenance techniques are controlled;\n[d] maintenance personnel are authorized; and\n[e] maintenance activities are monitored."
+                "assessment_objectives": "[a] tools used to conduct system maintenance are controlled;\n[b] techniques used to conduct system maintenance are controlled;\n[c] mechanisms used to conduct system maintenance are controlled; and\n[d] personnel used to conduct system maintenance are controlled.",
+                "examples": "Example\nYou are responsible for maintenance activities on your company's machines. To avoid introducing additional vulnerability into the systems you are maintaining, you make sure that all maintenance tools are approved and their usage is monitored and controlled [a,b]. You ensure the tools are kept current and up-to-date [a]. You and your backup are the only people authorized to use these tools and perform system maintenance [d]."
             },
             {
                 "requirement_id": "MA.L2-3.7.3", "title": "Equipment Sanitization", "domain": "MA",
                 "description": "Ensure equipment removed for off-site maintenance is sanitized of any CUI.",
                 "guidance": "Implement procedures to sanitize equipment containing CUI before sending it off-site for maintenance.",
-                "assessment_objectives": "[a] equipment sanitization procedures are defined;\n[b] equipment is sanitized before off-site maintenance;\n[c] sanitization effectiveness is verified; and\n[d] sanitization activities are documented."
+                "assessment_objectives": "[a] equipment to be removed from organizational spaces for off-site maintenance is sanitized of any CUI.",
+                "examples": "Example\nYou manage your organization's IT equipment. A recent DoD project has been using a storage array to house CUI. Recently, the array has experienced disk issues. After troubleshooting with the vendor, they recommend several drives be replaced in the array. Knowing the drives may contain CUI, you reference NIST 800-88 Rev. 1 and determine a strategy you can implement on the defective equipment – processing the drives with a degaussing unit [a]. Once all the drives have been wiped, you document the action and ship the faulty drives to the vendor."
             },
             {
                 "requirement_id": "MA.L2-3.7.4", "title": "Media Inspection", "domain": "MA",
                 "description": "Check media containing diagnostic and test programs for malicious code before the media are used in organizational systems.",
                 "guidance": "Scan all diagnostic and test media for malware before using them on organizational systems.",
-                "assessment_objectives": "[a] media inspection procedures are defined;\n[b] diagnostic and test media are inspected;\n[c] malicious code detection is performed; and\n[d] clean media is used in organizational systems."
+                "assessment_objectives": "[a] media containing diagnostic and test programs are checked for malicious code before being used in organizational systems that process, store, or transmit CUI.",
+                "examples": "Example\nYou have recently been experiencing performance issues on one of your servers. After troubleshooting for much of the morning, the vendor has asked to install a utility that will collect more data from the server. The file is stored on the vendor's FTP server. The support technician gives you the FTP site so you can anonymously download the utility file. You also ask him for a hash of the utility file. As you download the file to your local computer, you realize it is compressed. You unzip the file and perform a manual antivirus scan, which reports no issues [a]. To verify the utility file has not been altered, you run an application to see that the hash from the vendor matches."
             },
             {
                 "requirement_id": "MA.L2-3.7.5", "title": "Nonlocal Maintenance", "domain": "MA",
                 "description": "Require multifactor authentication to establish nonlocal maintenance sessions via external network connections and terminate such connections when nonlocal maintenance is complete.",
                 "guidance": "Implement MFA for remote maintenance sessions and ensure proper session termination.",
-                "assessment_objectives": "[a] nonlocal maintenance procedures are defined;\n[b] multifactor authentication is required for nonlocal maintenance;\n[c] maintenance sessions are terminated when complete; and\n[d] nonlocal maintenance is monitored."
+                "assessment_objectives": "[a] multifactor authentication is used to establish nonlocal maintenance sessions via external network connections; and\n[b] nonlocal maintenance sessions established via external network connections are terminated when nonlocal maintenance is complete.",
+                "examples": "Example\nYou are responsible for maintaining your company's firewall. In order to conduct maintenance while working remotely, you connect to the firewall's management interface and log in using administrator credentials. The firewall then sends a verification request to the multifactor authentication app on your smartphone [a]. You need both of these things to prove your identity [a]. After you respond to the multifactor challenge, you have access to the maintenance interface. When you finish your activities, you shut down the remote connection by logging out and quitting your web browser [b]."
             },
             {
                 "requirement_id": "MA.L2-3.7.6", "title": "Maintenance Personnel", "domain": "MA",
                 "description": "Supervise the maintenance activities of maintenance personnel without required access authorization.",
                 "guidance": "Ensure all maintenance personnel have proper authorization and supervise their activities.",
-                "assessment_objectives": "[a] maintenance personnel authorization procedures are defined;\n[b] maintenance personnel are authorized;\n[c] maintenance activities are supervised; and\n[d] unauthorized maintenance is prevented."
+                "assessment_objectives": "[a] maintenance personnel without required access authorization are supervised during maintenance activities.",
+                "examples": "Example\nOne of your software providers has to come on-site to update the software on your company's computers. You give the individual a temporary logon and password that expires in 12 hours and is limited to accessing only the computers necessary to complete the work [a]. This gives the technician access long enough to perform the update. You monitor the individual's physical and network activity while the maintenance is taking place [a] and revoke access when the job is done."
             },
             # Media Protection (MP) Requirements
             {
                 "requirement_id": "MP.L2-3.8.1", "title": "Media Protection", "domain": "MP",
                 "description": "Protect (i.e., physically control and securely store) system media containing CUI, both paper and digital.",
                 "guidance": "Implement physical and logical controls to protect media containing CUI from unauthorized access or theft.",
-                "assessment_objectives": "[a] media protection procedures are defined;\n[b] physical controls are implemented;\n[c] secure storage is provided;\n[d] both paper and digital media are protected; and\n[e] media protection is monitored."
+                "assessment_objectives": "[a] paper media containing CUI is physically controlled;\n[b] digital media containing CUI is physically controlled;\n[c] paper media containing CUI is securely stored; and\n[d] digital media containing CUI is securely stored.",
+                "examples": "Example\nYour company has CUI for a specific Army contract contained on a USB drive. You store the drive in a locked drawer, and you log it on an inventory [d]. You establish a procedure to check out the USB drive so you have a history of who is accessing it. These procedures help to maintain the confidentiality, integrity, and availability of the data."
             },
             {
                 "requirement_id": "MP.L2-3.8.2", "title": "Media Access", "domain": "MP",
                 "description": "Limit access to CUI on system media to authorized users.",
                 "guidance": "Implement access controls to ensure only authorized users can access media containing CUI.",
-                "assessment_objectives": "[a] media access procedures are defined;\n[b] access to CUI on media is limited to authorized users;\n[c] unauthorized access is prevented; and\n[d] media access is monitored."
+                "assessment_objectives": "[a] access to CUI on system media is limited to authorized users.",
+                "examples": "Example\nYour company has CUI for a specific Army contract contained on a USB drive. In order to control the data, you establish specific procedures for handling the drive. You designate the project manager as the owner of the data and require anyone who needs access to the data to get permission from the data owner [a]. The data owner maintains a list of users that are authorized to access the information. Before an authorized individual can get access to the USB drive that contains the CUI they have to fill out a log and check out the drive. When they are done with the data, they check in the drive and return it to its secure storage location."
             },
             {
                 "requirement_id": "MP.L2-3.8.3", "title": "Media Disposal [CUI Data]", "domain": "MP",
                 "description": "Sanitize or destroy system media containing CUI before disposal or release for reuse.",
                 "guidance": "For any media containing CUI (e.g., paper, USB drives, hard drives), either physically destroy it or use a secure sanitization process to erase the data before disposal or reuse.",
-                "assessment_objectives": "[a] media disposal procedures are defined;\n[b] system media containing CUI is sanitized or destroyed before disposal; and\n[c] system media containing CUI is sanitized or destroyed before release for reuse."
+                "assessment_objectives": "[a] system media containing CUI is sanitized or destroyed before disposal; and\n[b] system media containing CUI is sanitized before it is released for reuse.",
+                "examples": "Example\nAs you pack for an office move, you find some old CDs in a file cabinet. You determine that one has information about an old project your company did for the DoD. You shred the CD rather than simply throwing it in the trash [a]."
             },
             {
                 "requirement_id": "MP.L2-3.8.4", "title": "Media Markings", "domain": "MP",
                 "description": "Mark media with necessary CUI markings and distribution limitations.",
                 "guidance": "Ensure all media containing CUI is properly marked with appropriate classification and distribution limitations.",
-                "assessment_objectives": "[a] media marking procedures are defined;\n[b] media is marked with necessary CUI markings;\n[c] distribution limitations are marked; and\n[d] marking compliance is verified."
+                "assessment_objectives": "[a] media containing CUI is marked with applicable CUI markings; and\n[b] media containing CUI is marked with distribution limitations.",
+                "examples": "Example\nYou were recently contacted by the project team for a new DoD program. The team said they wanted the CUI in use for the program to be properly protected. When speaking with them, you realize that most of the protections will be provided as part of existing enterprise cybersecurity capabilities. They also mentioned that the project team will use several USB drives to share specific data. You explain that the team must ensure the USB drives are externally marked to indicate the presence of CUI [a]. The project team labels the outside of each USB drive with an appropriate CUI label following NARA guidance [a]. Further, the labels indicate that distribution is limited to those employees supporting the DoD program [a]."
             },
             {
                 "requirement_id": "MP.L2-3.8.5", "title": "Media Accountability", "domain": "MP",
                 "description": "Control access to media containing CUI and maintain accountability for media during transport outside of controlled areas.",
                 "guidance": "Implement tracking and accountability measures for media containing CUI during transport and storage.",
-                "assessment_objectives": "[a] media accountability procedures are defined;\n[b] access to media containing CUI is controlled;\n[c] accountability is maintained during transport; and\n[d] media tracking is implemented."
+                "assessment_objectives": "[a] access to media containing CUI is controlled; and\n[b] accountability for media containing CUI is maintained during transport outside of controlled areas.",
+                "examples": "Example\nYour team has recently completed configuring a server for a DoD customer. The customer has asked that it be ready to plug in and use. An application installed on the server contains data that is considered CUI. You box the server for shipment using tamper-evident packaging and label it with the specific recipient for the shipment [b]. You select a reputable shipping service so you will get a tracking number to monitor the progress. Once the item is shipped, you send the recipients the tracking number so they can monitor and ensure prompt delivery at their facility."
             },
             {
                 "requirement_id": "MP.L2-3.8.6", "title": "Portable Storage Encryption", "domain": "MP",
                 "description": "Implement cryptographic mechanisms to protect the confidentiality of CUI stored on digital media during transport unless otherwise protected by alternative physical safeguards.",
                 "guidance": "Use encryption to protect CUI on portable storage devices during transport, or implement alternative physical safeguards.",
-                "assessment_objectives": "[a] portable storage encryption procedures are defined;\n[b] cryptographic mechanisms are implemented;\n[c] CUI on digital media is protected during transport; and\n[d] alternative physical safeguards are used when appropriate."
+                "assessment_objectives": "[a] the confidentiality of CUI stored on digital media is protected during transport using cryptographic mechanisms or alternative physical safeguards.",
+                "examples": "Example\nYou manage the backups for file servers in your datacenter. You know that in addition to the company's sensitive information, CUI is stored on the file servers. As part of a broader plan to protect data, you send the backup tapes off site to a vendor. You are aware that your backup software provides the option to encrypt data onto tape. You develop a plan to test and enable backup encryption for the data sent off site. This encryption provides additional protections for the data on the backup tapes during transport and offsite storage [a]."
             },
             {
                 "requirement_id": "MP.L2-3.8.7", "title": "Removeable Media", "domain": "MP",
                 "description": "Control the use of removable media on system components.",
                 "guidance": "Implement controls to limit and monitor the use of removable media on organizational systems.",
-                "assessment_objectives": "[a] removable media control procedures are defined;\n[b] use of removable media is controlled;\n[c] removable media usage is monitored; and\n[d] unauthorized removable media use is prevented."
+                "assessment_objectives": "[a] the use of removable media on system components is controlled.",
+                "examples": "Example\nYou are in charge of IT operations. You establish a policy for removable media that includes USB drives [a]. The policy information such as:\n\n• only USB drives issued by the organization may be used; and\n• USB drives are to be used for work purposes only [a].\n\nYou set up a separate computer to scan these drives before anyone uses them on the network. This computer has anti-virus software installed that is kept up to date."
             },
             {
                 "requirement_id": "MP.L2-3.8.8", "title": "Shared Media", "domain": "MP",
                 "description": "Prohibit the use of portable storage devices when such devices have no identifiable owner.",
                 "guidance": "Implement policies to prevent the use of unowned or unidentified portable storage devices.",
-                "assessment_objectives": "[a] shared media procedures are defined;\n[b] use of unowned portable storage devices is prohibited;\n[c] device ownership is verified; and\n[d] policy compliance is monitored."
+                "assessment_objectives": "[a] the use of portable storage devices is prohibited when such devices have no identifiable owner.",
+                "examples": "Example\nYou are the IT manager. One day, a staff member reports finding a USB drive in the parking lot. You investigate and learn that there are no labels on the outside of the drive to indicate who might be responsible for it. You send an email to all employees to remind them that IT policies expressly prohibit plugging unknown devices into company computers. You also direct staff members to turn in to the IT help desk any devices that have no identifiable owner [a]."
             },
             {
                 "requirement_id": "MP.L2-3.8.9", "title": "Protect Backups", "domain": "MP",
                 "description": "Protect the confidentiality of backup CUI at storage locations.",
                 "guidance": "Implement appropriate security controls to protect backup media containing CUI at storage locations.",
-                "assessment_objectives": "[a] backup protection procedures are defined;\n[b] backup CUI confidentiality is protected;\n[c] storage locations are secured; and\n[d] backup security is monitored."
+                "assessment_objectives": "[a] the confidentiality of backup CUI is protected at storage locations.",
+                "examples": "Example\nYou are in charge of protecting CUI for your company. Because the company's backups contain CUI, you work with IT to protect the confidentiality of backup data. You agree to encrypt all CUI data as it is saved to an external hard drive [a]."
             },
             # Personnel Security (PS) Requirements
             {
                 "requirement_id": "PS.L2-3.9.1", "title": "Screen Individuals", "domain": "PS",
                 "description": "Screen individuals prior to authorizing access to organizational systems containing CUI.",
                 "guidance": "Conduct background checks and security screenings for personnel who will have access to systems containing CUI.",
-                "assessment_objectives": "[a] individual screening procedures are defined;\n[b] individuals are screened prior to access authorization;\n[c] screening results are documented; and\n[d] access is granted based on screening results."
+                "assessment_objectives": "[a] individuals are screened prior to authorizing access to organizational systems containing CUI.",
+                "examples": "Example\nYou are in charge of security at your organization. You complete standard criminal background and credit checks of all individuals you hire before they can access CUI [a]. Your screening program follows appropriate laws, policies, regulations, and criteria for the level of access required for each position."
             },
             {
                 "requirement_id": "PS.L2-3.9.2", "title": "Personnel Actions", "domain": "PS",
                 "description": "Ensure that organizational systems containing CUI are protected during and after personnel actions such as terminations and transfers.",
                 "guidance": "Implement procedures to revoke access and protect systems when personnel leave or change roles.",
-                "assessment_objectives": "[a] personnel action procedures are defined;\n[b] systems are protected during personnel actions;\n[c] access is revoked when appropriate;\n[d] systems remain protected after personnel actions; and\n[e] personnel action procedures are monitored."
+                "assessment_objectives": "[a] a policy and/or process for terminating system access and any credentials coincident with personnel actions is established;\n[b] system access and credentials are terminated consistent with personnel actions such as termination or transfer; and\n[c] the system is protected during and after personnel transfer actions.",
+                "examples": "Example 1\nYou are in charge of IT operations. Per organizational policies, when workers leave the company, you remove them from any physical CUI access lists. If you are not their supervisor, you contact their supervisor or human resources immediately and ask them to:\n\n• turn in the former employees' computers for proper handling;\n• inform help desk or system administrators to have the former employees' system access revoked;\n• retrieve the former employees' identification and access cards; and\n• have the former employees attend an exit interview where you or human resources remind them of their obligations to not discuss CUI [b].\n\nExample 2\nAn employee transfers from one working group in your company to another. Human resources team notifies IT of the transfer date, and the employee's new manager follows procedure by submitting a ticket to the IT help desk to provide information on the access rights the employee will require in their new role. IT implements the rights for the new position and revokes the access for the prior position on the official date of the transfer [c]."
             },
             # Physical Protection (PE) Requirements
             {
                 "requirement_id": "PE.L2-3.10.1", "title": "Limit Physical Access [CUI Data]", "domain": "PE",
                 "description": "Limit physical access to organizational systems, equipment, and the respective operating environments to authorized individuals.",
                 "guidance": "Use locks, card readers, or other physical controls to restrict access to offices, server rooms, and equipment. Maintain a list of personnel with authorized physical access.",
-                "assessment_objectives": "[a] authorized individuals allowed physical access are identified;\n[b] physical access to organizational systems is limited to authorized individuals;\n[c] physical access to equipment is limited to authorized individuals; and\n[d] physical access to operating environments is limited to authorized individuals."
+                "assessment_objectives": "[a] authorized individuals allowed physical access are identified;\n[b] physical access to organizational systems is limited to authorized individuals;\n[c] physical access to equipment is limited to authorized individuals; and\n[d] physical access to operating environments is limited to authorized individuals.",
+                "examples": "Example\nYou manage a DoD project that requires special equipment used only by project team members [b,c]. You work with the facilities manager to put locks on the doors to the areas where the equipment is stored and used [b,c,d]. Project team members are the only individuals issued with keys to the space. This restricts access to only those employees who work on the DoD project and require access to that equipment."
             },
             {
                 "requirement_id": "PE.L2-3.10.2", "title": "Monitor Facility", "domain": "PE",
                 "description": "Protect and monitor the physical facility and support infrastructure for organizational systems.",
                 "guidance": "Implement physical security measures including surveillance, alarms, and environmental controls to protect facilities and infrastructure.",
-                "assessment_objectives": "[a] facility protection procedures are defined;\n[b] physical facility is protected;\n[c] support infrastructure is protected;\n[d] monitoring systems are implemented; and\n[e] facility security is monitored."
+                "assessment_objectives": "[a] the physical facility where organizational systems reside is protected;\n[b] the support infrastructure for organizational systems is protected;\n[c] the physical facility where organizational systems reside is monitored; and\n[d] the support infrastructure for organizational systems is monitored.",
+                "examples": "Example\nYou are responsible for protecting your IT facilities. You install video cameras at each entrance and exit, connect them to a video recorder, and show the camera feeds on a display at the reception desk [c,d]. You also make sure there are secure locks on all entrances, exits, and windows to the facilities [a,b]."
             },
             {
                 "requirement_id": "PE.L2-3.10.3", "title": "Escort Visitors [CUI Data]", "domain": "PE",
                 "description": "Escort visitors and monitor visitor activity.",
                 "guidance": "Ensure all visitors are escorted by an employee at all times within the facility and wear visitor identification.",
-                "assessment_objectives": "[a] visitor escort procedures are defined;\n[b] visitors are escorted; and\n[c] visitor activity is monitored."
+                "assessment_objectives": "[a] visitors are escorted; and\n[b] visitor activity is monitored.",
+                "examples": "Example\nComing back from a meeting, you see the friend of a coworker walking down the hallway near your office. You know this person well and trust them, but are not sure why they are in the building. You stop to talk, and the person explains that they are meeting a coworker for lunch, but cannot remember where the lunchroom is. You walk the person back to the reception area to get a visitor badge and wait until someone can escort them to the lunch room [a]. You report this incident and the company decides to install a badge reader at the main door so visitors cannot enter without an escort [a]."
             },
             {
                 "requirement_id": "PE.L2-3.10.4", "title": "Physical Access Logs [CUI Data]", "domain": "PE",
                 "description": "Maintain audit logs of physical access.",
                 "guidance": "Use a sign-in sheet or electronic system to log all individuals entering and leaving the facility. Retain these logs for a defined period.",
-                "assessment_objectives": "[a] physical access logging procedures are defined;\n[b] audit logs of physical access are maintained; and\n[c] access logs are retained according to policy."
+                "assessment_objectives": "[a] audit logs of physical access are maintained.",
+                "examples": "Example\nYou and your coworkers like to have friends and family join you for lunch at the office on Fridays. Your small company has just signed a contract with the DoD, however, and you now need to document who enters and leaves your facility. You work with the reception staff to ensure that all non-employees sign in at the reception area and sign out when they leave [a]. You retain those paper sign-in sheets in a locked filing cabinet for one year. Employees receive badges or key cards that enable tracking and logging access to company facilities."
             },
             {
                 "requirement_id": "PE.L2-3.10.5", "title": "Manage Physical Access [CUI Data]", "domain": "PE",
                 "description": "Control and manage physical access devices.",
                 "guidance": "Keep an inventory of all physical access devices like keys and key cards. Know who has them, and revoke access when personnel leave or change roles.",
-                "assessment_objectives": "[a] physical access device management procedures are defined;\n[b] physical access devices are identified;\n[c] physical access devices are controlled; and\n[d] physical access devices are managed."
+                "assessment_objectives": "[a] physical access devices are identified;\n[b] physical access devices are controlled; and\n[c] physical access devices are managed.",
+                "examples": "Example\nYou are a facility manager. A team member retired today and returns their company keys to you. The project on which they were working requires access to areas that contain equipment with CUI. You receive the keys, check your electronic records against the serial numbers on the keys to ensure all have been returned, and mark each key returned [c]."
             },
             {
                 "requirement_id": "PE.L2-3.10.6", "title": "Alternative Work Sites", "domain": "PE",
                 "description": "Enforce safeguarding measures for CUI at alternate work sites.",
                 "guidance": "Implement security measures to protect CUI at remote work locations and alternative work sites.",
-                "assessment_objectives": "[a] alternative work site procedures are defined;\n[b] safeguarding measures are enforced at alternate work sites;\n[c] CUI is protected at alternate work sites; and\n[d] alternative work site security is monitored."
+                "assessment_objectives": "[a] safeguarding measures for CUI are defined for alternate work sites; and\n[b] safeguarding measures for CUI are enforced for alternate work sites.",
+                "examples": "Example\nMany of your company's project managers work remotely as they often travel to sponsor locations or even work from home. Because the projects on which they work require access to CUI, you must ensure the same level of protection is afforded as when they work in the office. You ensure that each laptop is deployed with patch management and anti-virus software protection [b]. Because data may be stored on the local hard drive, you have enabled full-disk encryption on their laptops [b]. When a remote staff member needs access to the internal network you require VPN connectivity that also disconnects the laptop from the remote network (i.e., prevents split tunneling) [b]. The VPN requires multifactor authentication to verify remote users are who they claim to be [b]."
             },
             # Risk Assessment (RA) Requirements
             {
                 "requirement_id": "RA.L2-3.11.1", "title": "Risk Assessments", "domain": "RA",
                 "description": "Periodically assess the risk to organizational operations (including mission, functions, image, or reputation), organizational assets, and individuals, resulting from the operation of organizational systems and the associated processing, storage, or transmission of CUI.",
                 "guidance": "Conduct regular risk assessments to identify and evaluate risks to organizational operations, assets, and individuals from system operations and CUI handling.",
-                "assessment_objectives": "[a] risk assessment procedures are defined;\n[b] risk assessments are conducted periodically;\n[c] risks to organizational operations are assessed;\n[d] risks to organizational assets are assessed;\n[e] risks to individuals are assessed; and\n[f] risk assessment results are documented."
+                "assessment_objectives": "[a] the frequency to assess risk to organizational operations, organizational assets, and individuals is defined; and\n[b] risk to organizational operations, organizational assets, and individuals resulting from the operation of an organizational system that processes, stores, or transmits CUI is assessed with the defined frequency.",
+                "examples": "Example\nYou are a system administrator. You and your team members are working on a big government contract requiring you to store CUI. As part of your periodic (e.g., annual) risk assessment exercise, you evaluate the new risk involved with storing CUI [a,b]. When conducting the assessment you consider increased legal exposure, financial requirements of safeguarding CUI, potentially elevated attention from external attackers, and other factors. After determining how storing CUI affects your overall risk profile, you use that as a basis for a conversation on how that risk should be mitigated."
             },
             {
                 "requirement_id": "RA.L2-3.11.2", "title": "Vulnerability Scan", "domain": "RA",
                 "description": "Scan for vulnerabilities in organizational systems and applications periodically and when new vulnerabilities affecting those systems and applications are identified.",
                 "guidance": "Implement regular vulnerability scanning of systems and applications, and conduct additional scans when new vulnerabilities are discovered.",
-                "assessment_objectives": "[a] vulnerability scanning procedures are defined;\n[b] systems are scanned for vulnerabilities periodically;\n[c] applications are scanned for vulnerabilities periodically;\n[d] additional scans are conducted when new vulnerabilities are identified; and\n[e] vulnerability scan results are documented."
+                "assessment_objectives": "[a] the frequency to scan for vulnerabilities in organizational systems and applications is defined;\n[b] vulnerability scans are performed on organizational systems with the defined frequency;\n[c] vulnerability scans are performed on applications with the defined frequency;\n[d] vulnerability scans are performed on organizational systems when new vulnerabilities are identified; and\n[e] vulnerability scans are performed on applications when new vulnerabilities are identified.",
+                "examples": "Example\nYou are a system administrator. Your organization has assessed its risk and determined that it needs to scan for vulnerabilities in systems and applications once each quarter [a]. You conduct some tests and decide that it is important to be able to schedule scans after standard business hours. You also realize that you have remote workers and that you will need to be sure to scan their remote computers as well [b]. After some final tests, you integrate the scans into normal IT operations, running as scheduled [b,c]. You verify that the scanner application receives the latest updates on vulnerabilities and that those are included in future scans [d,e]."
             },
             {
                 "requirement_id": "RA.L2-3.11.3", "title": "Vulnerability Remediation", "domain": "RA",
                 "description": "Remediate vulnerabilities in accordance with risk assessments.",
                 "guidance": "Implement a process to prioritize and remediate vulnerabilities based on risk assessment results and organizational priorities.",
-                "assessment_objectives": "[a] vulnerability remediation procedures are defined;\n[b] vulnerabilities are prioritized based on risk assessments;\n[c] vulnerabilities are remediated according to risk; and\n[d] remediation activities are tracked and documented."
+                "assessment_objectives": "[a] vulnerabilities are identified; and\n[b] vulnerabilities are remediated in accordance with risk assessments.",
+                "examples": "Example\nYou are a system administrator. Each quarter you receive a list of vulnerabilities generated by your company's vulnerability scanner [a]. You prioritize that list and note which vulnerabilities should be targeted as soon as possible as well as which vulnerabilities you can safely defer addressing at this time. You document the reasoning behind accepting the risk of the unremediated flaws and note to continue to monitor these vulnerabilities in case you need to revise the decision at a later date [b]."
             },
             # Security Assessment (CA) Requirements
             {
                 "requirement_id": "CA.L2-3.12.1", "title": "Security Control Assessment", "domain": "CA",
                 "description": "Periodically assess the security controls in organizational systems to determine if the controls are effective in their application.",
                 "guidance": "Conduct regular assessments of security controls to ensure they are functioning effectively and meeting security requirements.",
-                "assessment_objectives": "[a] security control assessment procedures are defined;\n[b] security controls are assessed periodically;\n[c] control effectiveness is evaluated;\n[d] assessment results are documented; and\n[e] control improvements are implemented as needed."
+                "assessment_objectives": "[a] the frequency of security control assessments is defined; and\n[b] security controls are assessed with the defined frequency to determine if the controls are effective in their application.",
+                "examples": "Example\nYou are in charge of IT operations. You need to ensure that the security controls implemented within the system are achieving their objectives [b]. Taking the requirements outlined in your SSP as a guide, you conduct annual written reviews of the security controls to ensure they meet your organization's needs. When you find controls that do not meet requirements, you propose updated or new controls, develop a written implementation plan, document new risks, and execute the changes."
             },
             {
                 "requirement_id": "CA.L2-3.12.2", "title": "Operational Plan of Action", "domain": "CA",
                 "description": "Develop and implement plans of action designed to correct deficiencies and reduce or eliminate vulnerabilities in organizational systems.",
                 "guidance": "Create and execute remediation plans to address security deficiencies and vulnerabilities identified during assessments.",
-                "assessment_objectives": "[a] plan of action procedures are defined;\n[b] plans of action are developed for deficiencies;\n[c] plans of action are developed for vulnerabilities;\n[d] plans of action are implemented; and\n[e] plan effectiveness is monitored."
+                "assessment_objectives": "[a] deficiencies and vulnerabilities to be addressed by the plan of action are identified;\n[b] a plan of action is developed to correct identified deficiencies and reduce or eliminate identified vulnerabilities; and\n[c] the plan of action is implemented to correct identified deficiencies and reduce or eliminate identified vulnerabilities.",
+                "examples": "Example\nAs IT director, one of your duties is to develop action plans when you discover that your company is not meeting security requirements or when a security issue arises [b]. A recent vulnerability scan identified several items that need to be addressed so you develop a plan to fix them [b]. Your plan identifies the people responsible for fixing the issues, how to do it, and when the remediation will be completed [b]. You also define how to verify that the person responsible has fixed the vulnerability [b]. You document this in an operational plan of action that is updated as milestones are reached [b]. You have a separate resource review the modifications after they have been completed to ensure the plan has been implemented correctly [c]."
             },
             {
                 "requirement_id": "CA.L2-3.12.3", "title": "Security Control Monitoring", "domain": "CA",
                 "description": "Monitor security controls on an ongoing basis to ensure the continued effectiveness of the controls.",
                 "guidance": "Implement continuous monitoring of security controls to ensure they remain effective over time.",
-                "assessment_objectives": "[a] security control monitoring procedures are defined;\n[b] security controls are monitored on an ongoing basis;\n[c] control effectiveness is continuously evaluated;\n[d] monitoring results are documented; and\n[e] control adjustments are made as needed."
+                "assessment_objectives": "[a] security controls are monitored on an ongoing basis to ensure the continued effectiveness of those controls.",
+                "examples": "Example\nYou are responsible for ensuring your company fulfills all cybersecurity requirements for its DoD contracts. You review those requirements and the security controls your company has put in place to meet them. You then create a plan to evaluate each control regularly over the next year. You mark several controls to be evaluated by a third-party security assessor. You assign other IT resources in the organization to evaluate controls within their area of responsibility. To ensure progress you establish recurring meetings with the accountable IT staff to assess continuous monitoring progress, review security information, evaluate risks from gaps in continuous monitoring, and produce reports for your management [a]."
             },
             {
                 "requirement_id": "CA.L2-3.12.4", "title": "System Security Plan", "domain": "CA",
                 "description": "Develop, document, and periodically update system security plans that describe system boundaries, system environments of operation, how security requirements are implemented, and the relationships with or connections to other systems.",
                 "guidance": "Create comprehensive system security plans that document all aspects of system security implementation and operation.",
-                "assessment_objectives": "[a] system security plan procedures are defined;\n[b] system security plans are developed;\n[c] system boundaries are documented;\n[d] system environments of operation are documented;\n[e] security requirement implementation is documented;\n[f] system relationships and connections are documented; and\n[g] plans are updated periodically."
+                "assessment_objectives": "[a] a system security plan is developed;\n[b] the system boundary is described and documented in the system security plan;\n[c] the system environment of operation is described and documented in the system security plan;\n[d] the security requirements identified and approved by the designated authority as non-applicable are identified;\n[e] the method of security requirement implementation is described and documented in the system security plan;\n[f] the relationship with or connection to other systems is described and documented in the system security plan;\n[g] the frequency to update the system security plan is defined; and\n[h] system security plan is updated with the defined frequency.",
+                "examples": "Example\nYou are in charge of system security. You develop an SSP and have senior leadership formally approve the document [a]. The SSP explains how your organization handles CUI and defines how that data is stored, transmitted, and protected [d,e]. The criteria outlined in the SSP is used to guide configuration of the network and other information resources to meet your company's goals. Knowing that it is important to keep the SSP current, you establish a policy that requires a formal review and update of the SSP each year [g,h]."
             },
             # System and Communications Protection (SC) Requirements
             {
                 "requirement_id": "SC.L2-3.13.1", "title": "Boundary Protection [CUI Data]", "domain": "SC",
                 "description": "Monitor, control, and protect communications (i.e., information transmitted or received by organizational systems) at the external boundaries and key internal boundaries of organizational systems.",
                 "guidance": "Use firewalls to protect the boundary between your internal network and the internet, blocking unwanted traffic and malicious websites.",
-                "assessment_objectives": "[a] the external system boundary is defined;\n[b] key internal system boundaries are defined;\n[c] communications are monitored at the external system boundary;\n[d] communications are monitored at key internal boundaries;\n[e] communications are controlled at the external system boundary;\n[f] communications are controlled at key internal boundaries;\n[g] communications are protected at the external system boundary; and\n[h] communications are protected at key internal boundaries."
+                "assessment_objectives": "[a] the external system boundary is defined;\n[b] key internal system boundaries are defined;\n[c] communications are monitored at the external system boundary;\n[d] communications are monitored at key internal boundaries;\n[e] communications are controlled at the external system boundary;\n[f] communications are controlled at key internal boundaries;\n[g] communications are protected at the external system boundary; and\n[h] communications are protected at key internal boundaries.",
+                "examples": "Example\nYou are setting up the new network and want to keep your company's information and resources safe. You start by sketching out a simple diagram that identifies the external boundary of your network and any internal boundaries that are needed [a,b]. The first piece of equipment you install is the firewall, a device to separate your internal network from the internet. The firewall also has a feature that allows you to block access to potentially malicious websites, and you configure that service as well [a,c,e,g]. Some of your coworkers complain that they cannot get onto certain websites [c,e,g]. You explain that the new network blocks websites that are known for spreading malware. The firewall sends you a daily digest of blocked activity so that you can monitor the system for attack trends [c,d]."
             },
             {
                 "requirement_id": "SC.L2-3.13.2", "title": "Security Engineering", "domain": "SC",
                 "description": "Employ architectural designs, software development techniques, and systems engineering principles that promote effective information security within organizational systems.",
                 "guidance": "Implement security-by-design principles throughout the system development lifecycle to build security into systems from the ground up.",
-                "assessment_objectives": "[a] security engineering procedures are defined;\n[b] architectural designs promote security;\n[c] software development techniques promote security;\n[d] systems engineering principles promote security; and\n[e] security engineering effectiveness is monitored."
+                "assessment_objectives": "[a] architectural designs that promote effective information security are identified;\n[b] software development techniques that promote effective information security are identified;\n[c] systems engineering principles that promote effective information security are identified;\n[d] identified architectural designs that promote effective information security are employed;\n[e] identified software development techniques that promote effective information security are employed; and\n[f] identified systems engineering principles that promote effective information security are employed.",
+                "examples": "Example\nYou are responsible for developing strategies to protect data and harden your infrastructure. You are on a team responsible for performing a major upgrade to a legacy system. You refer to your documented security engineering principles [c]. Reviewing each, you decide which are appropriate and applicable [c]. You apply the chosen designs and principles when creating your design for the upgrade [f].\n\nYou document the security requirements for the software and hardware changes to ensure the principles are followed. You review the upgrade at critical points in the workflow to ensure the requirements are met. You assist in updating the policies covering the use of the upgraded system so user behavior stays aligned with the principles."
             },
             {
                 "requirement_id": "SC.L2-3.13.3", "title": "Role Separation", "domain": "SC",
                 "description": "Separate user functionality from system management functionality.",
                 "guidance": "Implement role separation to prevent users from accessing system management functions and vice versa.",
-                "assessment_objectives": "[a] role separation procedures are defined;\n[b] user functionality is separated from system management functionality;\n[c] role separation is enforced; and\n[d] role separation effectiveness is monitored."
+                "assessment_objectives": "[a] user functionality is identified;\n[b] system management functionality is identified; and\n[c] user functionality is separated from system management functionality.",
+                "examples": "Example\nAs a system administrator, you are responsible for managing a number of core systems. Policy prevents you from conducting any administration from the computer or system account you use for day-to-day work [a,b]. The servers you manage also are isolated from the main corporate network. To work with them you use a special unique account to connect to a \"jump\" server that has access to the systems you routinely administer."
             },
             {
                 "requirement_id": "SC.L2-3.13.4", "title": "Shared Resource Control", "domain": "SC",
                 "description": "Prevent unauthorized and unintended information transfer via shared system resources.",
                 "guidance": "Implement controls to prevent information leakage through shared system resources like memory, storage, and network interfaces.",
-                "assessment_objectives": "[a] shared resource control procedures are defined;\n[b] unauthorized information transfer is prevented;\n[c] unintended information transfer is prevented;\n[d] shared resource access is controlled; and\n[e] shared resource security is monitored."
+                "assessment_objectives": "[a] unauthorized and unintended information transfer via shared system resources is prevented.",
+                "examples": "Example\nYou are a system administrator responsible for creating and deploying the system hardening procedures for your company's computers. You ensure that the computer baselines include software patches to prevent attackers from exploiting flaws in the processor architecture to read data (e.g., the Meltdown and Spectre exploits). You also verify that the computer operating system is configured to prevent users from accessing other users' folders [a]."
             },
             {
                 "requirement_id": "SC.L2-3.13.5", "title": "Public-Access System Separation [CUI Data]", "domain": "SC",
                 "description": "Implement subnetworks for publicly accessible system components that are physically or logically separated from internal networks.",
                 "guidance": "Isolate publicly accessible systems (like a public website) from your internal network using a demilitarized zone (DMZ) or separate VLAN.",
-                "assessment_objectives": "[a] public-access system separation procedures are defined;\n[b] publicly accessible system components are identified; and\n[c] subnetworks for publicly accessible system components are physically or logically separated from internal networks."
+                "assessment_objectives": "[a] publicly accessible system components are identified; and\n[b] subnetworks for publicly accessible system components are physically or logically separated from internal networks.",
+                "examples": "Example\nThe head of recruiting at your company wants to launch a website to post job openings and allow the public to download an application form [a]. After some discussion, your team realizes it needs to use a firewall to create a perimeter network to do this [b]. You host the server separately from the company's internal network and make sure the network on which it resides is isolated with the proper firewall rules [b]."
             },
             {
                 "requirement_id": "SC.L2-3.13.6", "title": "Network Communication by Exception", "domain": "SC",
                 "description": "Deny network communications traffic by default and allow network communications traffic by exception (i.e., deny all, permit by exception).",
                 "guidance": "Implement default-deny network policies that only allow explicitly authorized network communications.",
-                "assessment_objectives": "[a] network communication procedures are defined;\n[b] network communications traffic is denied by default;\n[c] network communications traffic is allowed by exception; and\n[d] network communication policies are enforced."
+                "assessment_objectives": "[a] network communications traffic is denied by default; and\n[b] network communications traffic is allowed by exception.",
+                "examples": "Example\nYou are setting up a new environment to house CUI. To properly isolate the CUI network, you install a firewall between it and other networks and set the firewall rules to deny all traffic [a]. You review each service and application that runs in the new environment and determine that you only need to allow http and https traffic outbound [b]. You test the functionality of the required services and make some needed adjustments, then comment each firewall rule so there is documentation of why it is required. You review the firewall rules on a regular basis to make sure no unauthorized changes were made."
             },
             {
                 "requirement_id": "SC.L2-3.13.7", "title": "Split Tunneling", "domain": "SC",
                 "description": "Prevent remote devices from simultaneously establishing non-remote connections with organizational systems and communicating via some other connection to resources in external networks (i.e., split tunneling).",
                 "guidance": "Configure VPN and remote access systems to prevent split tunneling that could bypass security controls.",
-                "assessment_objectives": "[a] split tunneling prevention procedures are defined;\n[b] split tunneling is prevented;\n[c] remote device connections are controlled; and\n[d] split tunneling prevention is monitored."
+                "assessment_objectives": "[a] remote devices are prevented from simultaneously establishing non-remote connections with the system and communicating via some other connection to resources in external networks (i.e., split tunneling).",
+                "examples": "Example\nYou are a system administrator responsible for configuring the network to prevent remote users from using split tunneling. You review the configuration of remote user laptops. You discover that remote users are able to access files, email, database and other services through the VPN connection while also being able to print and access resources on their local network. You change the configuration settings for all company computers to disable split tunneling [a]. You test a laptop that has had the new hardening procedures applied and verify that all traffic from the laptop is now routed through the VPN connection."
             },
             {
                 "requirement_id": "SC.L2-3.13.8", "title": "Data in Transit", "domain": "SC",
                 "description": "Implement cryptographic mechanisms to prevent unauthorized disclosure of CUI during transmission unless otherwise protected by alternative physical safeguards.",
                 "guidance": "Use encryption to protect CUI during transmission over networks, or implement alternative physical safeguards.",
-                "assessment_objectives": "[a] data in transit protection procedures are defined;\n[b] cryptographic mechanisms are implemented;\n[c] CUI is protected during transmission;\n[d] alternative physical safeguards are used when appropriate; and\n[e] data in transit protection is monitored."
+                "assessment_objectives": "[a] cryptographic mechanisms intended to prevent unauthorized disclosure of CUI are identified;\n[b] alternative physical safeguards intended to prevent unauthorized disclosure of CUI are identified; and\n[c] either cryptographic mechanisms or alternative physical safeguards are implemented to prevent unauthorized disclosure of CUI during transmission.",
+                "examples": "Example\nYou are a system administrator responsible for configuring encryption on all devices that contain CUI. Because your users regularly store CUI on laptops and take them out of the office, you encrypt the hard drives with a FIPS-validated encryption tool built into the operating system. For users who need to share CUI, you install a Secure FTP server to allow CUI to be transmitted in a compliant manner [a]. You verify that the server is using a FIPS-validated encryption module by checking the NIST Cryptographic Module Validation Program website [c]. You turn on the \"FIPS Compliance\" setting for the server during configuration because that is what is required for this product in order to use only FIPS-validated cryptography [c]."
             },
             {
                 "requirement_id": "SC.L2-3.13.9", "title": "Connections Termination", "domain": "SC",
                 "description": "Terminate network connections associated with communications sessions at the end of the sessions or after a defined period of inactivity.",
                 "guidance": "Implement automatic termination of network connections when sessions end or after periods of inactivity.",
-                "assessment_objectives": "[a] connection termination procedures are defined;\n[b] network connections are terminated at the end of sessions;\n[c] network connections are terminated after periods of inactivity; and\n[d] connection termination is monitored."
+                "assessment_objectives": "[a] a period of inactivity to terminate network connections associated with communications sessions is defined;\n[b] network connections associated with communications sessions are terminated at the end of the sessions; and\n[c] network connections associated with communications sessions are terminated after the defined period of inactivity.",
+                "examples": "Example\nYou are an administrator of a server that provides remote access. Your company's policies state that network connections must be terminated after being idle for 60 minutes [a]. You edit the server configuration file and set the timeout to 60 minutes and restart the remote access software [c]. You test the software and verify that the connection is terminated appropriately."
             },
             {
                 "requirement_id": "SC.L2-3.13.10", "title": "Key Management", "domain": "SC",
                 "description": "Establish and manage cryptographic keys for cryptography employed in organizational systems.",
                 "guidance": "Implement proper key management practices including key generation, distribution, storage, rotation, and destruction.",
-                "assessment_objectives": "[a] key management procedures are defined;\n[b] cryptographic keys are established;\n[c] cryptographic keys are managed;\n[d] key lifecycle is properly handled; and\n[e] key management security is monitored."
+                "assessment_objectives": "[a] cryptographic keys are established whenever cryptography is employed; and\n[b] cryptographic keys are managed whenever cryptography is employed.",
+                "examples": "Example 1\nYou are a system administrator responsible for providing key management. You have generated a public-private key pair to exchange CUI [a]. You require all system administrators to read the key management policy before you allow them to install the private key on their machines [b]. No one else is allowed to know or have a copy of the private key per the policy. You provide the public key to the other parties who will be sending you CUI and test the Public Key Infrastructure (PKI) to ensure the encryption is working [a]. You set a revocation period of one year on all your certificates per organizational policy [b].\n\nExample 2\nYou encrypt all of your company's computers using the disk encryption utility built into the operating system. As you configure encryption on each device, it generates a cryptographic key. You associate each key with the correct computer in your inventory spreadsheet and restrict access to the spreadsheet to the system administrators whose work role requires them to manage the computers [b]."
             },
             {
                 "requirement_id": "SC.L2-3.13.11", "title": "CUI Encryption", "domain": "SC",
                 "description": "Employ FIPS-validated cryptography when used to protect the confidentiality of CUI.",
                 "guidance": "Use only FIPS-validated cryptographic algorithms and implementations when protecting CUI.",
-                "assessment_objectives": "[a] CUI encryption procedures are defined;\n[b] FIPS-validated cryptography is employed;\n[c] CUI confidentiality is protected; and\n[d] cryptographic compliance is monitored."
+                "assessment_objectives": "[a] FIPS-validated cryptography is employed to protect the confidentiality of CUI.",
+                "examples": "Example\nYou are a system administrator responsible for deploying encryption on all devices that contain CUI. You must ensure that the encryption you use on the devices is FIPS-validated cryptography [a]. An employee informs you of a need to carry a large volume of CUI offsite and asks for guidance on how to do so. You provide the user with disk encryption software that you have verified via the NIST website that uses a CMVP-validated encryption module [a]. Once the encryption software is active, the user copies the CUI data onto the drive for transport."
             },
             {
                 "requirement_id": "SC.L2-3.13.12", "title": "Collaborative Device Control", "domain": "SC",
                 "description": "Prohibit remote activation of collaborative computing devices and provide indication of devices in use to users present at the device.",
                 "guidance": "Implement controls to prevent unauthorized remote activation of collaborative devices and provide clear indicators when devices are in use.",
-                "assessment_objectives": "[a] collaborative device control procedures are defined;\n[b] remote activation of collaborative devices is prohibited;\n[c] device usage indicators are provided; and\n[d] collaborative device security is monitored."
+                "assessment_objectives": "[a] collaborative computing devices are identified;\n[b] collaborative computing devices provide indication to users of devices in use; and\n[c] remote activation of collaborative computing devices is prohibited.",
+                "examples": "Example\nA group of remote employees at your company routinely collaborate using cameras and microphones attached to their computers [a]. To prevent the misuse of these devices, you disable the ability to turn on cameras or microphones remotely [c]. You ensure the machines alert users when the camera or microphone are in use with a light beside the camera and an onscreen notification [b]. Although remote activation is blocked, this enables users to see if the devices are active."
             },
             {
                 "requirement_id": "SC.L2-3.13.13", "title": "Mobile Code", "domain": "SC",
                 "description": "Control and monitor the use of mobile code.",
                 "guidance": "Implement controls to restrict and monitor the execution of mobile code like JavaScript, Java applets, and ActiveX controls.",
-                "assessment_objectives": "[a] mobile code control procedures are defined;\n[b] mobile code use is controlled;\n[c] mobile code use is monitored; and\n[d] mobile code security is enforced."
+                "assessment_objectives": "[a] use of mobile code is controlled; and\n[b] use of mobile code is monitored.",
+                "examples": "Example\nYour company has decided to prohibit the use of Flash, ActiveX, and Java plug-ins for web browsers on all of its computers [a]. To enforce this policy you configure the computer baseline configuration to disable and deny the execution of mobile code [a]. You implement an exception process to re-enable mobile code execution only for those users with a legitimate business need [a].\n\nOne department complains that a web application they need to perform their job no longer works. You meet with them and verify that the web application uses ActiveX in the browser. You submit a change request with the Change Review Board. Once the change is approved, you reconfigure the department's computers to allow the running of ActiveX in the browser. You also configure the company firewall to alert you if ActiveX is used by any website but the allowed one [b]. You set a reminder for yourself to check in with the department at the end of the year to verify they still need that web application."
             },
             {
                 "requirement_id": "SC.L2-3.13.14", "title": "Voice over Internet Protocol", "domain": "SC",
                 "description": "Control and monitor the use of Voice over Internet Protocol (VoIP) technologies.",
                 "guidance": "Implement security controls for VoIP systems to prevent unauthorized access and monitor usage.",
-                "assessment_objectives": "[a] VoIP control procedures are defined;\n[b] VoIP use is controlled;\n[c] VoIP use is monitored; and\n[d] VoIP security is enforced."
+                "assessment_objectives": "[a] use of Voice over Internet Protocol (VoIP) technologies is controlled; and\n[b] use of Voice over Internet Protocol (VoIP) technologies is monitored.",
+                "examples": "Example\nYou are a system administrator responsible for the VoIP system. You configure VoIP for new users after being notified that they have signed the Acceptable Use Policy for VoIP technology [a]. You verify that the VoIP solution is configured to use encryption and have enabled requirements for passwords on voice mailboxes and on phone extension management. You require phone system administrators to log in using multifactor authentication when managing the system [a]. You add the VoIP software to the list of applications that are patched monthly as needed [a,b]. Finally, you configure the VoIP system to send logs to your log aggregator so that they can be correlated with those from other systems and examined for signs of suspicious activity [b]."
             },
             {
                 "requirement_id": "SC.L2-3.13.15", "title": "Communications Authenticity", "domain": "SC",
                 "description": "Protect the authenticity of communications sessions.",
                 "guidance": "Implement mechanisms to verify the authenticity of communications sessions and prevent session hijacking.",
-                "assessment_objectives": "[a] communications authenticity procedures are defined;\n[b] communications session authenticity is protected;\n[c] session hijacking is prevented; and\n[d] communications authenticity is monitored."
+                "assessment_objectives": "[a] the authenticity of communications sessions is protected.",
+                "examples": "Example\nYou are a system administrator responsible for ensuring that the two-factor user authentication mechanism for the servers is configured correctly. You purchase and maintain the digital certificate and replace it with a new one before the old one expires. You ensure the TLS configuration settings on the web servers, VPN solution, and other components that use TLS are correct, using secure settings that address risks against attacks on the encrypted sessions [a]."
             },
             {
                 "requirement_id": "SC.L2-3.13.16", "title": "Data at Rest", "domain": "SC",
                 "description": "Protect the confidentiality of CUI at rest.",
                 "guidance": "Use encryption to protect CUI stored on systems and storage devices.",
-                "assessment_objectives": "[a] data at rest protection procedures are defined;\n[b] CUI confidentiality is protected at rest;\n[c] encryption is used for data at rest; and\n[d] data at rest protection is monitored."
+                "assessment_objectives": "[a] the confidentiality of CUI at rest is protected.",
+                "examples": "Example 1\nYour company has a policy stating CUI must be protected at rest and you work to enforce that policy. You research Full Disk Encryption (FDE) products that meet the FIPS encryption requirement. After testing, you deploy the encryption to all computers to protect CUI at rest [a].\n\nExample 2\nYou have used encryption to protect the CUI on most of the computers at your company, but you have some devices that do not support encryption. You create a policy requiring these devices to be signed out when needed, stay in possession of the signer when checked out, and to be signed back in and locked up in a secured closet when the user is done with the device [a]. At the end of the day each Friday, you audit the sign-out sheet and make sure all devices are returned to the closet."
             },
             # System and Information Integrity (SI) Requirements
             {
                 "requirement_id": "SI.L2-3.14.1", "title": "Flaw Remediation [CUI Data]", "domain": "SI",
                 "description": "Identify, report, and correct system flaws in a timely manner.",
                 "guidance": "Implement a patch management process to fix software and firmware flaws within a defined timeframe based on vendor notifications.",
-                "assessment_objectives": "[a] flaw remediation procedures are defined;\n[b] system flaws are identified;\n[c] system flaws are reported;\n[d] system flaws are corrected in a timely manner; and\n[e] flaw remediation is monitored."
+                "assessment_objectives": "[a] the time within which to identify system flaws is specified;\n[b] system flaws are identified within the specified time frame;\n[c] the time within which to report system flaws is specified;\n[d] system flaws are reported within the specified time frame;\n[e] the time within which to correct system flaws is specified; and\n[f] system flaws are corrected within the specified time frame.",
+                "examples": "Example\nYou know that software vendors typically release patches, service packs, hot fixes, etc. and want to make sure your software is up to date. You develop a policy that requires checking vendor websites for flaw notifications every week [a]. The policy further requires that those flaws be assessed for severity and patched on end-user computers once each week and servers once each month [c,e]. Consistent with that policy, you configure the system to check for updates weekly or daily depending on the criticality of the software [b,e]. Your team reviews available updates and implements the applicable ones according to the defined schedule [f]."
             },
             {
                 "requirement_id": "SI.L2-3.14.2", "title": "Malicious Code Protection [CUI Data]", "domain": "SI",
                 "description": "Provide protection from malicious code at designated locations within organizational systems.",
                 "guidance": "Use anti-virus and anti-malware software on workstations, servers, and firewalls to protect against malicious code like viruses and ransomware.",
-                "assessment_objectives": "[a] malicious code protection procedures are defined;\n[b] designated locations for malicious code protection are identified; and\n[c] protection from malicious code at designated locations is provided."
+                "assessment_objectives": "[a] designated locations for malicious code protection are identified; and\n[b] protection from malicious code at designated locations is provided.",
+                "examples": "Example\nYou are buying a new computer and want to protect your company's information from viruses, spyware, etc. You buy and install anti-malware software [a,b]."
             },
             {
                 "requirement_id": "SI.L2-3.14.3", "title": "Security Alerts & Advisories", "domain": "SI",
                 "description": "Monitor system security alerts and advisories and take action in response.",
                 "guidance": "Subscribe to security alert services and implement processes to respond to security advisories and alerts.",
-                "assessment_objectives": "[a] security alert monitoring procedures are defined;\n[b] system security alerts are monitored;\n[c] security advisories are monitored;\n[d] action is taken in response to alerts and advisories; and\n[e] response effectiveness is monitored."
+                "assessment_objectives": "[a] response actions to system security alerts and advisories are identified;\n[b] system security alerts and advisories are monitored; and\n[c] actions in response to system security alerts and advisories are taken.",
+                "examples": "Example\nYou monitor security advisories each week. You review the alert emails and online subscription service alerts to determine which ones apply [b]. You create a list of the applicable alerts and research what steps you need to take to address them. Next, you generate a plan that you review with your change management group so that the work can be scheduled [c]."
             },
             {
                 "requirement_id": "SI.L2-3.14.4", "title": "Update Malicious Code Protection [CUI Data]", "domain": "SI",
                 "description": "Update malicious code protection mechanisms when new releases are available.",
                 "guidance": "Configure anti-malware software to update its definition files automatically and frequently (e.g., daily) to protect against the latest threats.",
-                "assessment_objectives": "[a] malicious code protection update procedures are defined;\n[b] malicious code protection mechanisms are updated when new releases are available; and\n[c] update effectiveness is monitored."
+                "assessment_objectives": "[a] malicious code protection mechanisms are updated when new releases are available.",
+                "examples": "Example\nYou have installed anti-malware software to protect a computer from malicious code. Knowing that malware evolves rapidly, you configure the software to automatically check for malware definition updates every day and update as needed [a]."
             },
             {
                 "requirement_id": "SI.L2-3.14.5", "title": "System & File Scanning [CUI Data]", "domain": "SI",
                 "description": "Perform periodic scans of organizational systems and real-time scans of files from external sources as files are downloaded, opened, or executed.",
                 "guidance": "Configure anti-malware software to perform periodic full-system scans and real-time scans of files from external sources like email attachments and USB drives.",
-                "assessment_objectives": "[a] scanning procedures are defined;\n[b] periodic scans of organizational systems are performed;\n[c] real-time scans of files from external sources are performed; and\n[d] scanning effectiveness is monitored."
+                "assessment_objectives": "[a] the frequency for malicious code scans is defined;\n[b] malicious code scans are performed with the defined frequency; and\n[c] real-time malicious code scans of files from external sources as files are downloaded, opened, or executed are performed.",
+                "examples": "Example\nYou work with your company's email provider to enable enhanced protections that will scan all attachments to identify and quarantine those that may be harmful prior to a user opening them [c]. In addition, you configure antivirus software on each computer to scan for malicious code every day [a,b]. The software also scans files that are downloaded or copied from removable media such as USB drives. It quarantines any suspicious files and notifies the security team [c]."
             },
             {
                 "requirement_id": "SI.L2-3.14.6", "title": "Monitor Communications for Attacks", "domain": "SI",
                 "description": "Monitor organizational systems, including inbound and outbound communications traffic, to detect attacks and indicators of potential attacks.",
                 "guidance": "Implement network monitoring and intrusion detection systems to identify malicious activity and potential security threats.",
-                "assessment_objectives": "[a] communications monitoring procedures are defined;\n[b] organizational systems are monitored;\n[c] inbound communications traffic is monitored;\n[d] outbound communications traffic is monitored;\n[e] attacks are detected; and\n[f] indicators of potential attacks are detected."
+                "assessment_objectives": "[a] the system is monitored to detect attacks and indicators of potential attacks;\n[b] inbound communications traffic is monitored to detect attacks and indicators of potential attacks; and\n[c] outbound communications traffic is monitored to detect attacks and indicators of potential attacks.",
+                "examples": "Example\nIt is your job to look for known indicators of attack or anomalous activity within your systems and communications traffic [a,b,c]. Because these indicators can show up in a variety of places on your network, you have created a checklist of places to check each week. These include the office firewall logs, the audit logs of the file server where CUI is stored, and the connection log for your VPN gateway [b].\n\nYou conduct additional reviews when you find an indicator, or something that does not perform as it should [a]."
             },
             {
                 "requirement_id": "SI.L2-3.14.7", "title": "Identify Unauthorized Use", "domain": "SI",
                 "description": "Identify unauthorized use of organizational systems.",
                 "guidance": "Implement monitoring and detection systems to identify unauthorized access and use of organizational systems.",
-                "assessment_objectives": "[a] unauthorized use identification procedures are defined;\n[b] unauthorized use of organizational systems is identified;\n[c] unauthorized access is detected; and\n[d] unauthorized use monitoring is effective."
+                "assessment_objectives": "[a] authorized use of the system is defined; and\n[b] unauthorized use of the system is identified.",
+                "examples": "Example 1\nYou are in charge of IT operations. You need to ensure that everyone using an organizational system is authorized to do so and conforms to the written authorized use policy. To do this, you deploy an application that monitors user activity and records the information for later analysis. You review the data from this application for signs of activity that does not conform to the acceptable use policy [a,b].\n\nExample 2\nYou are alerted through your Intrusion Detection System (IDS) that one of your users is connecting to a server that is from a high-risk domain (based on your commercial domain reputation service). You investigate and determine that it's not the user, but instead an unauthorized connection attempt [b]. You add the domain to your list of blocked domains to prevent connections in the future."
             }
         ]
 
@@ -1755,60 +1872,65 @@ def init_database():
                     level_id=level2.id,
                     domain_id=domain.id,
                     guidance=req_data['guidance'],
-                    assessment_objectives=req_data['assessment_objectives']
+                    assessment_objectives=req_data['assessment_objectives'],
+                    examples=req_data.get('examples', '')
                 )
                 db.session.add(requirement)
 
-    # Add CMMC Level 3 Requirements (Basic set for demonstration)
+    # Add CMMC Level 3 Requirements
     if not CMMCRequirement.query.filter_by(level_id=CMMCLevel.query.filter_by(level_number=3).first().id).first():
         level_3_requirements = [
             # Access Control (AC) Requirements
             {
-                "requirement_id": "AC.L3-3.1.1", "title": "Advanced Access Control [CUI Data]", "domain": "AC",
-                "description": "Implement advanced access control mechanisms for CUI data with enhanced security controls.",
-                "guidance": "Deploy advanced identity and access management solutions with role-based access control, privileged access management, and continuous monitoring.",
-                "assessment_objectives": "[a] advanced access control mechanisms are implemented;\n[b] CUI data access is controlled with enhanced security;\n[c] access control effectiveness is continuously monitored; and\n[d] access control policies are enforced."
+                "requirement_id": "AC.L3-3.1.2E", "title": "Organizationally Controlled Assets", "domain": "AC",
+                "description": "Restrict access to systems and system components to only those information resources that are owned, provisioned, or issued by the organization.",
+                "guidance": "Implementing this requirement ensures that an organization has control over the systems that can connect to organizational assets. This control will allow more effective and efficient application of security policy. The terms \"has control over\" provides policy for systems that are not owned outright by the organization. Control includes policies, regulations or standards that are enforced on the resource accessing contractor systems. Control may also be exercised through contracts or agreements with the external party. Provisioned includes setting configuration, whether through direct technical means or by policy or agreement. For purposes of this requirement, GFE can be considered provisioned by the OSA.",
+                "assessment_objectives": "[a] Information resources that are owned, provisioned, or issued by the organization are identified; and\n[b] Access to systems and system components is restricted to only those information resources that are owned, provisioned, or issued by the organization.",
+                "examples": "Example 1\nYou are the chief network architect for your company. Company policy states that all company-owned assets must be separated from all non-company-owned (i.e., guest or employee) assets. You decide the best way forward is to modify the corporate wired and wireless networks to only allow company-owned devices to connect [b]. All other devices are connected to a second (untrusted) network that non-corporate devices may use to access the internet. The two environments are physically separated and are not allowed to be connected. You also decide to limit the virtual private network (VPN) services of the company to devices owned by the corporation by installing certificate keys and have the VPN validate the configuration of connecting devices before they are allowed in [b].\n\nExample 2\nYou are a small company that uses an External Service Provider (ESP) to provide your audit logging. Access between the ESP and the organization is controlled by the agreement between the organization and the ESP. That agreement will include the policies, standards, and configuration for the required access. Technical controls should be documented and in place which limit the ESP's access to the minimum required to perform the logging service."
             },
             {
-                "requirement_id": "AC.L3-3.1.2", "title": "Advanced Session Management", "domain": "AC",
-                "description": "Implement advanced session management with enhanced security controls and monitoring.",
-                "guidance": "Deploy advanced session management solutions with real-time monitoring, anomaly detection, and automated response capabilities.",
-                "assessment_objectives": "[a] advanced session management is implemented;\n[b] session security controls are enhanced;\n[c] session monitoring is continuous; and\n[d] session management effectiveness is verified."
+                "requirement_id": "AC.L3-3.1.3E", "title": "Secured Information Transfer", "domain": "AC",
+                "description": "Employ secure information transfer solutions to control information flows between security domains on connected systems.",
+                "guidance": "The organization implementing this requirement must decide on the secure information transfer solutions they will use. The solutions must be configured to have strong protection mechanisms for information flow between security domains. Secure information transfer solutions control information flow between a Level 3 enclave and other CMMC or non-CMMC enclaves. If CUI requiring Level 3 protection resides in one area of the environment or within a given enclave outside of the normal working environment, protection to prevent unauthorized personnel from accessing, disseminating, and sharing the protected information is required. Physical and virtual methods can be employed to implement secure information transfer solutions.",
+                "assessment_objectives": "[ODP1] Secure information transfer solutions are defined;\n[a] Information flows between security domains on connected systems are identified; and\n[b] Secure information transfer solutions are employed to control information flows between security domains on connected systems.",
+                "examples": "Example\nYou are the administrator for an enterprise that stores and processes CUI requiring Level 3 protection. The files containing CUI information are tagged by the company as CUI. To ensure secure information transfer, you use an intermediary device to check the transfer of any CUI files. The device sits at the boundary of the CUI enclave, is aware of all other CUI domains in the enterprise, and has the ability to examine the metadata in the encrypted payload. The tool checks all outbound communications paths. It first checks the metadata for all data being transferred. If that data is identified as CUI, the device checks the destination to see if the transfer is to another, sufficiently certified CUI domain. If the destination is not a sufficient CUI domain, the tool blocks the communication path and does not allow the transfer to take place. If the destination is a sufficient CUI domain, the transfer is allowed. The intermediary device logs all blocks."
             },
-            # Audit and Accountability (AU) Requirements
+            # Awareness and Training (AT) Requirements
             {
-                "requirement_id": "AU.L3-3.3.1", "title": "Advanced Audit Logging", "domain": "AU",
-                "description": "Implement advanced audit logging with comprehensive coverage and real-time analysis.",
-                "guidance": "Deploy advanced SIEM solutions with real-time log analysis, correlation, and automated response capabilities.",
-                "assessment_objectives": "[a] advanced audit logging is implemented;\n[b] comprehensive audit coverage is provided;\n[c] real-time log analysis is performed; and\n[d] audit logging effectiveness is monitored."
+                "requirement_id": "AT.L3-3.2.1E", "title": "Advanced Threat Awareness", "domain": "AT",
+                "description": "Provide awareness training upon initial hire, following a significant cyber event, and at least annually, focused on recognizing and responding to threats from social engineering, advanced persistent threat actors, breaches, and suspicious behaviors; update the training at least annually or when there are significant changes to the threat.",
+                "guidance": "All organizations, regardless of size, should have a cyber training program that helps employees understand threats they will face on a daily basis. This training must include knowledge about APT actors, breaches, and suspicious behaviors.",
+                "assessment_objectives": "[a] Threats from social engineering, advanced persistent threat actors, breaches, and suspicious behaviors are identified;\n[b] Awareness training focused on recognizing and responding to threats from social engineering, advanced persistent threat actors, breaches, and suspicious behaviors is provided upon initial hire, following a significant cyber event, and at least annually;\n[c] Significant changes to the threats from social engineering, advanced persistent threat actors, breaches, and suspicious behaviors are identified; and\n[d] Awareness training is updated at least annually or when there are significant changes to the threat.",
+                "examples": "Example\nYou are the cyber training coordinator for a small business with eight employees. You do not have your own in-house cyber training program. Instead, you use a third-party company to provide cyber training. New hires take the course when they start, and all current staff members receive refresher training at least once a year [b]. When significant changes to the threat landscape take place, the company contacts you and informs you that an update to the training has been completed [c,d] and everyone will need to receive training [b]. You keep a log of all employees who have gone through the cyber training program and the dates of training."
+            },
+            {
+                "requirement_id": "AT.L3-3.2.2E", "title": "Practical Training Exercises", "domain": "AT",
+                "description": "Include practical exercises in awareness training for all users, tailored by roles, to include general users, users with specialized roles, and privileged users, that are aligned with current threat scenarios and provide feedback to individuals involved in the training and their supervisors.",
+                "guidance": "This requirement can be performed by the organization or by a third-party company. Training exercises (including unannounced exercises, such as phishing training) should be performed at various times throughout the year to encourage employee readiness. After each exercise session has been completed, the results should be recorded (date, time, what and who the training tested, and the percent of successful and unsuccessful responses). The purpose of training is to help employees in all roles act appropriately for any given training situation, which should reflect real-life scenarios. Collected results will help identify shortcomings in the cyber training and/or whether additional instructional training may be needed. General exercises can be included for all users, but exercises tailored for specific roles are important, too. Training tailored for specific roles helps make sure individuals are ready for actions and events specific to their positions in a company. Privileged users receive training that emphasizes what permissions their privileged account has in a given environment and what extra care is required when using their privileged account.",
+                "assessment_objectives": "[a] Practical exercises are identified;\n[b] Current threat scenarios are identified;\n[c] Individuals involved in training and their supervisors are identified;\n[d] Practical exercises that are aligned with current threat scenarios are included in awareness training for all users, tailored by roles, to include general users, users with specialized roles, and privileged users; and\n[e] Feedback is provided to individuals involved in the training and their supervisors.",
+                "examples": "Example\nYou are the cyber training coordinator for a medium-sized business. You and a coworker have developed a specialized awareness training to increase cybersecurity awareness around your organization. Your training includes social media campaigns, social engineering phone calls, and phishing emails with disguised links to staff to train them beyond the standard cybersecurity training [a,b].\n\nTo send simulated phishing emails to staff, you subscribe to a third-party service that specializes in this area [a]. The service sets up fictitious websites with disguised links to help train general staff against this TTP used by APTs [d]. The third-party company tracks the individuals who were sent phishing emails and whether they click on any of the links within the emails. After the training action is completed, you receive a report from the third-party company. The results show that 20% of the staff clicked on one or more phishing email links, demonstrating a significant risk to your company. As the cyber training coordinator, you notify the individuals, informing them they failed the training and identifying the area(s) of concern [e]. You send an email to the supervisors informing them who in their organization has received training. You also send an email out to the entire company explaining the training that just took place and the overall results [e]."
             },
             # Configuration Management (CM) Requirements
             {
-                "requirement_id": "CM.L3-3.4.1", "title": "Advanced Configuration Management", "domain": "CM",
-                "description": "Implement advanced configuration management with automated compliance monitoring.",
-                "guidance": "Deploy advanced configuration management tools with automated compliance checking, drift detection, and remediation capabilities.",
-                "assessment_objectives": "[a] advanced configuration management is implemented;\n[b] automated compliance monitoring is provided;\n[c] configuration drift is detected; and\n[d] configuration management effectiveness is verified."
+                "requirement_id": "CM.L3-3.4.1E", "title": "Authoritative Repository", "domain": "CM",
+                "description": "Establish and maintain an authoritative source and repository to provide a trusted source and accountability for approved and implemented system components.",
+                "guidance": "Trusted software, whether securely developed in house or obtained from a trusted source, should have baseline data integrity established when first created or obtained, such as by using hash algorithms to obtain a hash value that would be used to validate the source prior to use of the software in a given system. Hardware in the repository should be stored in boxes or containers with tamper-evident seals. Hashes and seals should be checked on a regular basis employing the principle of separation of duties.",
+                "assessment_objectives": "[a] Approved system components are identified;\n[b] Implemented system components are identified;\n[c] An authoritative source and repository are established to provide a trusted source and accountability for approved and implemented system components; and\n[d] An authoritative source and repository are maintained to provide a trusted source and accountability for approved and implemented system components.",
+                "examples": "Example\nYou are the primary system build technician at a medium-sized company. You have been put in charge of creating, documenting, and implementing a baseline configuration for all user systems [c]. You have identified a minimum set of software that is needed by all employees to complete their work (e.g., office automation software). You acquire trusted versions of the software and build one or more baselines of all system software, firmware, and applications required by the organization. The gold version of each baseline is stored in a secure configuration management system repository and updated as required to maintain integrity and security. Access to the build repository for updates and use is carefully controlled using access control mechanisms that limit access to you and your staff. All interactions with the repository are logged. Using an automated build tool, your team builds each organizational system using the standard baseline."
             },
-            # Identification and Authentication (IA) Requirements
             {
-                "requirement_id": "IA.L3-3.5.1", "title": "Advanced Authentication", "domain": "IA",
-                "description": "Implement advanced authentication mechanisms with enhanced security controls.",
-                "guidance": "Deploy advanced authentication solutions including biometric authentication, hardware tokens, and adaptive authentication.",
-                "assessment_objectives": "[a] advanced authentication mechanisms are implemented;\n[b] enhanced security controls are deployed;\n[c] authentication effectiveness is monitored; and\n[d] authentication security is continuously improved."
+                "requirement_id": "CM.L3-3.4.2E", "title": "Automated Detection & Remediation", "domain": "CM",
+                "description": "Employ automated mechanisms to detect misconfigured or unauthorized system components; after detection, remove the components or place the components in a quarantine or remediation network to facilitate patching, re-configuration, or other mitigations.",
+                "guidance": "For this requirement, the organization is required to implement automated tools to help identify misconfigured components. Once under an attacker's control, the system may be modified in some manner and the automated tool should detect this. Or, if a user performs a manual configuration adjustment, the system will be viewed as misconfigured, and that change should be detected. Another common example is if a component has been offline and not updated, the tool should detect the incorrect configuration. If any of these scenarios occurs, the automated configuration management system (ACMS) will notice a change and can take the system offline, quarantine the system, or send an alert so the component(s) can be manually removed. Quarantining a misconfigured component does not require it to be removed from the network. Quarantining only requires that a temporary limitation be put in place eliminating the component's ability to process, store, or transmit CUI until it is properly configured. If a component has the potential of disrupting business operations then the OSC should take extra care to ensure configuration updates are properly tested and that components are properly configured and tested before being added to the network. Once one of these actions is accomplished, a system technician may need to manually inspect the system or rebuild it using the baseline configuration. Another option is for an ACMS to make adjustments while the system is running rather than performing an entire rebuild. These adjustments can include replacing configuration files, executable files, scripts, or library files on the fly.",
+                "assessment_objectives": "[a] Automated mechanisms to detect misconfigured or unauthorized system components are identified;\n[b] Automated mechanisms are employed to detect misconfigured or unauthorized system components;\n[c] Misconfigured or unauthorized system components are detected; and\n[d] After detection, system components are removed or placed in a quarantine or remediation network to facilitate patching, re-configuration, or other mitigations.",
+                "examples": "Example 1\nAs the system administrator, you implement company policy stating that every system connecting to the company network via VPN will be checked for specific configuration settings and software versioning before it is allowed to connect to the network, after it passes authentication [a,b]. If any deviations from the authoritative baseline are identified, the system is placed in a VPN quarantine zone (remediation network) using a virtual local area network (VLAN) [b,c,d]. This VLAN is set up for system analysis, configuration changes, and rebuilding after forensic information is pulled from the system. Once the system updates are complete, the system will be removed from the quarantine zone and placed on the network through the VPN connection.\n\nExample 2\nAs the system administrator, you have chosen to use a network access control (NAC) solution to validate system configurations before they are allowed to connect to the corporate network [a]. When a system plugs into or connects to a local network port or the VPN, the NAC solution checks the hash of installed system software [b,c]. If the system does not pass the configuration check, it is put in quarantine until an administrator can examine it or the ACMS updates the system to pass the system checks [d]."
             },
-            # System and Communications Protection (SC) Requirements
             {
-                "requirement_id": "SC.L3-3.13.1", "title": "Advanced Network Protection", "domain": "SC",
-                "description": "Implement advanced network protection with comprehensive security controls.",
-                "guidance": "Deploy advanced network security solutions including next-generation firewalls, intrusion prevention systems, and network segmentation.",
-                "assessment_objectives": "[a] advanced network protection is implemented;\n[b] comprehensive security controls are deployed;\n[c] network security is continuously monitored; and\n[d] network protection effectiveness is verified."
-            },
-            # System and Information Integrity (SI) Requirements
-            {
-                "requirement_id": "SI.L3-3.14.1", "title": "Advanced Threat Protection", "domain": "SI",
-                "description": "Implement advanced threat protection with comprehensive security monitoring.",
-                "guidance": "Deploy advanced threat protection solutions including endpoint detection and response, security orchestration, and automated response capabilities.",
-                "assessment_objectives": "[a] advanced threat protection is implemented;\n[b] comprehensive security monitoring is provided;\n[c] threat detection is automated; and\n[d] threat protection effectiveness is continuously improved."
+                "requirement_id": "CM.L3-3.4.3E", "title": "Automated Inventory", "domain": "CM",
+                "description": "Employ automated discovery and management tools to maintain an up-to-date, complete, accurate, and readily available inventory of system components.",
+                "guidance": "Organizations use an automated capability to discover components connected to the network and system software installed. The automated capability must also be able to identify attributes associated with those components. For systems that have already been coupled to the environment, they should allow remote access for inspection of the system software configuration and components. Another option is to place an agent on systems that performs internal system checks to identify system software configuration and components. Collection of switch and router data can also be used to identify systems on networks.",
+                "assessment_objectives": "[a] Automated discovery and management tools for the inventory of system components are identified;\n[b] An up-to-date, complete, accurate, and readily available inventory of system components exists; and\n[c] Automated discovery and management tools are employed to maintain an up-to-date, complete, accurate, and readily available inventory of system components.",
+                "examples": "Example\nWithin your organization, you are in charge of implementing an authoritative inventory of system components. You first create a list of the automated technologies you will use and what each technology will be responsible for identifying [a]. This includes gathering information from switches, routers, access points, primary domain controllers, and all connected systems or devices, whether wired or wireless (printers, IoT, IIoT, OT, IT, etc.) [b]. To keep the data up-to-date, you set a very short search frequency for identifying new components. To maximize availability of this data, all information will be placed in a central inventory/configuration management system, and automated reporting is performed every day [c]. A user dashboard is set up that allows you and other administrators to run reports at any time."
             }
         ]
 
@@ -1825,7 +1947,8 @@ def init_database():
                     level_id=level3.id,
                     domain_id=domain.id,
                     guidance=req_data['guidance'],
-                    assessment_objectives=req_data['assessment_objectives']
+                    assessment_objectives=req_data['assessment_objectives'],
+                    examples=req_data.get('examples', '')
                 )
                 db.session.add(requirement)
 
