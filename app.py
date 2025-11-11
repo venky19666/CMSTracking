@@ -1,5 +1,7 @@
 import hashlib
+import json
 import os
+import re
 import secrets
 from datetime import datetime
 from functools import wraps
@@ -84,11 +86,25 @@ class ComplianceRecord(db.Model):
     status = db.Column(db.String(20), default='not_started')  # 'compliant', 'non_compliant', 'in_progress', 'not_started'
     artifact_path = db.Column(db.String(500))
     notes = db.Column(db.Text)
+    completed_objectives = db.Column(db.Text)  # JSON array of completed objective letters (e.g., '["a", "b", "c"]')
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     user = db.relationship('User', backref='compliance_records')
     requirement = db.relationship('CMMCRequirement', backref='compliance_records')
+    
+    def get_completed_objectives(self):
+        """Return list of completed objective letters."""
+        if self.completed_objectives:
+            try:
+                return json.loads(self.completed_objectives)
+            except:
+                return []
+        return []
+    
+    def set_completed_objectives(self, objectives_list):
+        """Set completed objectives as JSON string."""
+        self.completed_objectives = json.dumps(objectives_list) if objectives_list else None
 
 # New Models for objectives (processes and devices)
 class ServiceAccount(db.Model):
@@ -117,6 +133,56 @@ def _generate_token() -> str:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+def parse_assessment_objectives(objectives_text):
+    """Parse assessment objectives text and extract individual objectives.
+    
+    Returns a list of dictionaries with 'label' (a, b, c, etc.) and 'description' (text).
+    """
+    if not objectives_text:
+        return []
+    
+    objectives = []
+    # Pattern to match [a], [b], [c], etc. followed by text
+    # Looks for [letter] followed by text until next [letter] or end of string
+    # Split by lines and process each line that starts with [letter]
+    lines = objectives_text.split('\n')
+    current_obj = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if line starts with [letter]
+        match = re.match(r'\[([a-z])\]\s*(.+)', line, re.IGNORECASE)
+        if match:
+            # Save previous objective if exists
+            if current_obj:
+                objectives.append(current_obj)
+            # Start new objective
+            label = match.group(1).lower()
+            description = match.group(2).strip().rstrip(';').strip()
+            # Remove "and" at the end if it's the last objective
+            if description.endswith(' and'):
+                description = description[:-4].strip()
+            current_obj = {
+                'label': label,
+                'description': description
+            }
+        elif current_obj and line:
+            # Continue current objective description (multi-line)
+            line_clean = line.strip().rstrip(';').strip()
+            if line_clean and not line_clean.startswith('['):
+                if line_clean.endswith(' and'):
+                    line_clean = line_clean[:-4].strip()
+                current_obj['description'] += ' ' + line_clean
+    
+    # Add last objective
+    if current_obj:
+        objectives.append(current_obj)
+    
+    return objectives
 
 # Authentication decorator
 def login_required(f):
@@ -387,10 +453,21 @@ def requirements():
         domain_ids = {r.domain_id for r in CMMCRequirement.query.filter_by(level_id=selected_level_id).all()}
         domains_for_filter = [d for d in domains if d.id in domain_ids]
 
-    # Get user's compliance records
+    # Get user's compliance records - only for filtered requirements
     user_records = {}
-    for record in ComplianceRecord.query.filter_by(user_id=session['user_id']).all():
-        user_records[record.requirement_id] = record
+    filtered_requirement_ids = [r.id for r in requirements] if requirements else []
+    if filtered_requirement_ids:
+        for record in ComplianceRecord.query.filter_by(user_id=session['user_id']).filter(ComplianceRecord.requirement_id.in_(filtered_requirement_ids)).all():
+            user_records[record.requirement_id] = record
+
+    # Calculate progress summary for filtered requirements only
+    progress_summary = {
+        'total': len(requirements),
+        'compliant': sum(1 for r in user_records.values() if r.status == 'compliant'),
+        'in_progress': sum(1 for r in user_records.values() if r.status == 'in_progress'),
+        'non_compliant': sum(1 for r in user_records.values() if r.status == 'non_compliant'),
+        'not_started': len(requirements) - len(user_records)
+    }
 
     # Prepare grouped view for all levels
     is_grouped_mode = False
@@ -435,7 +512,8 @@ def requirements():
         is_grouped_mode=is_grouped_mode,
         grouped_by_domain=grouped_by_domain,
         level_total=level_total,
-        current_level=current_level
+        current_level=current_level,
+        progress_summary=progress_summary
     )
 
 @app.route('/admin')
@@ -769,9 +847,21 @@ def compliance_record(requirement_id):
                 artifact_path = f"/{STATIC_UPLOADS_SUBDIR}/{unique_name}"
                 print(f"Artifact path stored as: {artifact_path}")  # Debug print
 
+        # Handle objective completion
+        completed_objectives = []
+        if status == 'compliant':
+            # If compliant, mark all objectives as completed
+            objectives = parse_assessment_objectives(requirement.assessment_objectives)
+            completed_objectives = [obj['label'] for obj in objectives]
+        elif status == 'in_progress':
+            # Get completed objectives from form checkboxes
+            objective_keys = [key for key in request.form.keys() if key.startswith('objective_')]
+            completed_objectives = [key.replace('objective_', '') for key in objective_keys if request.form.get(key) == 'on']
+        
         if record:
             record.status = status
             record.notes = notes
+            record.set_completed_objectives(completed_objectives)
             if artifact_path is not None:  # Only update if explicitly set (including None for deletion)
                 record.artifact_path = artifact_path
             record.updated_at = datetime.utcnow()
@@ -783,13 +873,23 @@ def compliance_record(requirement_id):
                 notes=notes,
                 artifact_path=artifact_path
             )
+            record.set_completed_objectives(completed_objectives)
             db.session.add(record)
         
         db.session.commit()
         flash('Compliance record updated successfully!', 'success')
         return redirect(next_url)
     
-    return render_template('compliance_record.html', requirement=requirement, record=record, next_url=next_url)
+    # Parse objectives for display
+    objectives = parse_assessment_objectives(requirement.assessment_objectives) if requirement.assessment_objectives else []
+    completed_obj_labels = record.get_completed_objectives() if record else []
+    
+    return render_template('compliance_record.html', 
+                         requirement=requirement, 
+                         record=record, 
+                         next_url=next_url,
+                         objectives=objectives,
+                         completed_objectives=completed_obj_labels)
 
 @app.route('/api/compliance-summary')
 @login_required
@@ -953,103 +1053,120 @@ def init_database():
                 "requirement_id": "AC.L1-3.1.1", "title": "Authorized Access Control", "domain": "AC",
                 "description": "Limit information system access to authorized users, processes acting on behalf of authorized users, or devices (including other information systems).",
                 "guidance": "Maintain a list of authorized users, processes, and devices. Ensure the system is configured to grant access only to those on the approved list.",
-                "assessment_objectives": "[a] authorized users are identified;\n[b] processes acting on behalf of authorized users are identified;\n[c] devices (and other systems) authorized to connect to the system are identified;\n[d] system access is limited to authorized users;\n[e] system access is limited to processes acting on behalf of authorized users; and\n[f] system access is limited to authorized devices (including other systems)."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] authorized users are identified;\n[b] processes acting on behalf of authorized users are identified;\n[c] devices (and other systems) authorized to connect to the system are identified;\n[d] system access is limited to authorized users;\n[e] system access is limited to processes acting on behalf of authorized users; and\n[f] system access is limited to authorized devices (including other systems).",
+                "examples": "Example 1\n\nYour company maintains a list of all personnel authorized to use company information systems [a]. This list is used to support identification and authentication activities conducted by IT when authorizing access to systems [a,d].\n\nExample 2\n\nA coworker wants to buy a new multi-function printer/scanner/fax device and make it available on the company network. You explain that the company controls system and device access to the network, and will prevent network access by unauthorized systems and devices [c]. You help the coworker submit a ticket that asks for the printer to be granted access to the network, and appropriate leadership approves the device [f]."
             },
             {
                 "requirement_id": "AC.L1-3.1.2", "title": "Transaction & Function Control", "domain": "AC",
                 "description": "Limit information system access to the types of transactions and functions that authorized users are permitted to execute.",
                 "guidance": "Use role-based access control (RBAC) to ensure users can only perform functions necessary for their job roles (e.g., create, read, update, delete).",
-                "assessment_objectives": "[a] the types of transactions and functions that authorized users are permitted to execute are defined; and\n[b] system access is limited to the types of transactions and functions that authorized users are permitted to execute."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] the types of transactions and functions that authorized users are permitted to execute are defined; and\n[b] system access is limited to the defined types of transactions and functions for authorized users.",
+                "examples": "Example\n\nYou supervise the team that manages DoD contracts for your company. Members of your team need to access the contract information to perform their work properly. Because some of that data contains FCI, you work with IT to set up your group's systems so that users can be assigned access based on their specific roles [a]. Each role limits whether an employee has read-access or create/read/delete/update -access [b]. Implementing this access control restricts access to FCI information unless specifically authorized."
             },
             {
                 "requirement_id": "AC.L1-3.1.20", "title": "External Connections", "domain": "AC",
                 "description": "Verify and control/limit connections to and use of external information systems.",
                 "guidance": "Use firewalls and connection policies to manage connections between your network and external ones. Control access from personally owned devices.",
-                "assessment_objectives": "[a] connections to external systems are identified;\n[b] the use of external systems is identified;\n[c] connections to external systems are verified;\n[d] the use of external systems is verified; and\n[e] connections to external systems are controlled/limited."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] connections to external systems are identified;\n[b] the use of external systems is identified;\n[c] connections to external systems are verified;\n[d] the use of external systems is verified;\n[e] connections to external systems are controlled/limited; and\n[f] the use of external systems is controlled/limited.",
+                "examples": "Example\n\nYou and your coworkers are working on a big proposal and will put in extra hours over the weekend to get it done. Part of the proposal includes FCI. Because FCI should not be shared publicly, you remind your coworkers of the policy requirement to use their company laptops, not personal laptops or tablets, when working on the proposal over the weekend [b,f]. You also remind everyone to work from the cloud environment that is approved for processing and storing FCI rather than the other collaborative tools that may be used for other projects [b,f]."
             },
             {
                 "requirement_id": "AC.L1-3.1.22", "title": "Control Public Information", "domain": "AC",
                 "description": "Control information posted or processed on publicly accessible information systems.",
                 "guidance": "Establish a review process to prevent Federal Contract Information (FCI) from being posted on public systems like company websites or forums.",
-                "assessment_objectives": "[a] individuals authorized to post or process information on publicly accessible systems are identified;\n[b] procedures to ensure FCI is not posted or processed on publicly accessible systems are identified;\n[c] a review process is in place prior to posting of any content to publicly accessible systems;\n[d] content on publicly accessible systems is reviewed to ensure that it does not include FCI; and\n[e] mechanisms are in place to remove and address improper posting of FCI."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] individuals authorized to post or process information on publicly accessible systems are identified;\n[b] procedures to ensure FCI is not posted or processed on publicly accessible systems are identified;\n[c] a review process is in place prior to posting of any content to publicly accessible systems;\n[d] content on publicly accessible systems is reviewed to ensure that it does not include FCI; and\n[e] mechanisms are in place to remove and address improper posting of FCI.",
+                "examples": "Example\n\nYour company decides to start issuing press releases about its projects in an effort to reach more potential customers. Your company receives FCI from the government as part of its DoD contract. Because you recognize the need to manage controlled information, including FCI, you meet with the employees who write the releases and post information to establish a review process [c]. It is decided that you will review press releases for FCI before posting it on the company website [a,d]. Only certain employees will be authorized to post to the website [a]."
             },
             {
                 "requirement_id": "IA.L1-3.5.1", "title": "Identification", "domain": "IA",
                 "description": "Identify information system users, processes acting on behalf of users, or devices.",
                 "guidance": "Assign unique identifiers (e.g., usernames) to all users, processes, and devices that require access to company systems.",
-                "assessment_objectives": "[a] system users are identified;\n[b] processes acting on behalf of users are identified; and\n[c] devices are identified."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] system users are identified;\n[b] processes acting on behalf of users are identified; and\n[c] devices accessing the system are identified.",
+                "examples": "Example\n\nYou want to make sure that all employees working on a project can access important information about it. Because this is work for the DoD and may contain FCI, you also need to prevent employees who are not working on that project from being able to access the information. You assign each employee is assigned a unique user ID, which they use to log into the system [a]."
             },
             {
                 "requirement_id": "IA.L1-3.5.2", "title": "Authentication", "domain": "IA",
                 "description": "Authenticate (or verify) the identities of those users, processes, or devices, as a prerequisite to allowing access to organizational information systems.",
                 "guidance": "Verify identity before granting access, typically with a username and strong password. Always change default passwords on new devices and systems.",
-                "assessment_objectives": "[a] the identity of each user is authenticated or verified as a prerequisite to system access;\n[b] the identity of each process acting on behalf of a user is authenticated or verified as a prerequisite to system access; and\n[c] the identity of each device accessing or connecting to the system is authenticated or verified as a prerequisite to system access."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] the identity of each user is authenticated or verified as a prerequisite to system access;\n[b] the identity of each process acting on behalf of a user is authenticated or verified as a prerequisite to system access; and\n[c] the identity of each device accessing or connecting to the system is authenticated or verified as a prerequisite to system access.",
+                "examples": "Example 1\n\nYou are in charge of purchasing. You know that some laptops come with a default username and password. You notify IT that all default passwords should be reset prior to laptop use [a]. You ask IT to explain the importance of resetting default passwords and convey how easily they are discovered using internet searches during next week's cybersecurity awareness training.\n\nExample 2\n\nYour company decides to use cloud services for email and other capabilities. Upon reviewing this practice, you realize every user or device that connects to the cloud service must be authenticated. As a result, you work with your cloud service provider to ensure that only properly authenticated users and devices are allowed to connect to the system [a,c]."
             },
             {
                 "requirement_id": "MP.L1-3.8.3", "title": "Media Disposal", "domain": "MP",
                 "description": "Sanitize or destroy information system media containing Federal Contract Information before disposal or release for reuse.",
                 "guidance": "For any media containing FCI (e.g., paper, USB drives, hard drives), either physically destroy it or use a secure sanitization process to erase the data before disposal or reuse.",
-                "assessment_objectives": "[a] system media containing FCI is sanitized or destroyed before disposal; and\n[b] system media containing FCI is sanitized or destroyed before release for reuse."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a]system media containing FCI is sanitized or destroyed before disposal; and\n[b]system media containing FCI is sanitized before it is released for reuse.",
+                "examples": "Example\n\nAs you pack for an office move, you find some old CDs in a file cabinet. You determine that one has information about an old project your company did for the DoD. You shred the CD rather than simply throwing it in the trash [a]."
             },
             {
                 "requirement_id": "PE.L1-3.10.1", "title": "Limit Physical Access", "domain": "PE",
                 "description": "Limit physical access to organizational information systems, equipment, and the respective operating environments to authorized individuals.",
                 "guidance": "Use locks, card readers, or other physical controls to restrict access to offices, server rooms, and equipment. Maintain a list of personnel with authorized physical access.",
-                "assessment_objectives": "[a] authorized individuals allowed physical access are identified;\n[b] physical access to organizational systems is limited to authorized individuals;\n[c] physical access to equipment is limited to authorized individuals; and\n[d] physical access to operating environments is limited to authorized individuals."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] authorized individuals allowed physical access are identified;\n[b] physical access to organizational systems is limited to authorized individuals;\n[c] physical access to equipment is limited to authorized individuals; and\n[d] physical access to operating environments is limited to authorized individuals.",
+                "examples": "Example\n\nYou manage a DoD project that requires special equipment used only by project team members [b,c]. You work with the facilities manager to put locks on the doors to the areas where the equipment is stored and used [b,c,d]. Project team members are the only individuals issued with keys to the space. This restricts access to only those employees who work on the DoD project and require access to that equipment."
             },
             {
                 "requirement_id": "PE.L1-3.10.3", "title": "Escort Visitors", "domain": "PE",
                 "description": "Escort visitors and monitor visitor activity.",
                 "guidance": "Ensure all visitors are escorted by an employee at all times within the facility and wear visitor identification.",
-                "assessment_objectives": "[a] visitors are escorted; and\n[b] visitor activity is monitored."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] visitors are escorted; and\n[b] visitor activity is monitored.",
+                "examples": "Example\n\nComing back from a meeting, you see the friend of a coworker walking down the hallway near your office. You know this person well and trust them, but are not sure why they are in the building. You stop to talk, and the person explains that they are meeting a coworker for lunch, but cannot remember where the lunchroom is. You walk the person back to the reception area to get a visitor badge and wait until someone can escort them to the lunch room [a]. You report this incident, and the company decides to install a badge reader at the main door so visitors cannot enter without an escort [a]."
             },
             {
                 "requirement_id": "PE.L1-3.10.4", "title": "Physical Access Logs", "domain": "PE",
                 "description": "Maintain audit logs of physical access.",
                 "guidance": "Use a sign-in sheet or electronic system to log all individuals entering and leaving the facility. Retain these logs for a defined period.",
-                "assessment_objectives": "[a] audit logs of physical access are maintained."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] audit logs of physical access are maintained.",
+                "examples": "Example\n\nYou and your coworkers like to have friends and family join you for lunch at the office on Fridays. Your small company has just signed a contract with the DoD, however, and you now need to document who enters and leaves your facility. You work with the reception staff to ensure that all non-employees sign in at the reception area and sign out when they leave [a]. You retain those paper sign-in sheets in a locked filing cabinet for one year. Employees receive badges or key cards that enable tracking and logging access to company facilities."
             },
             {
                 "requirement_id": "PE.L1-3.10.5", "title": "Manage Physical Access", "domain": "PE",
                 "description": "Control and manage physical access devices.",
                 "guidance": "Keep an inventory of all physical access devices like keys and key cards. Know who has them, and revoke access when personnel leave or change roles.",
-                "assessment_objectives": "[a] physical access devices are identified;\n[b] physical access devices are controlled; and\n[c] physical access devices are managed."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] physical access devices are identified;\n[b] physical access devices are controlled; and\n[c] physical access devices are managed.",
+                "examples": "Example\n\nYou are a facility manager. A team member retired today and returns their company keys to you. The project on which they were working requires access to areas that contain equipment with FCI. You receive the keys, check your electronic records against the serial numbers on the keys to ensure all have been returned, and mark each key returned [c]."
             },
             {
                 "requirement_id": "SC.L1-3.13.1", "title": "Boundary Protection", "domain": "SC",
                 "description": "Monitor, control, and protect organizational communications (i.e., information transmitted or received by organizational information systems) at the external boundaries and key internal boundaries of the information systems.",
                 "guidance": "Use firewalls to protect the boundary between your internal network and the internet, blocking unwanted traffic and malicious websites.",
-                "assessment_objectives": "[a] the external system boundary is defined;\n[b] key internal system boundaries are defined;\n[c] communications are monitored at the external system boundary;\n[d] communications are monitored at key internal boundaries;\n[e] communications are controlled at the external system boundary;\n[f] communications are controlled at key internal boundaries;\n[g] communications are protected at the external system boundary; and\n[h] communications are protected at key internal boundaries."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] the external system boundary is defined;\n[b] key internal system boundaries are defined;\n[c] communications are monitored at the external system boundary;\n[d] communications are monitored at key internal boundaries;\n[e] communications are controlled at the external system boundary;\n[f] communications are controlled at key internal boundaries;\n[g] communications are protected at the external system boundary; and\n[h] communications are protected at key internal boundaries.",
+                "examples": "Example\n\nYou are setting up the new network and want to keep your company's information and resources safe. You start by sketching out a simple diagram that identifies the external boundary of your network and any internal boundaries that are needed [a,b]. The first piece of equipment you install is the firewall, a device to separate your internal network from the internet. The firewall also has a feature that allows you to block access to potentially malicious websites, and you configure that service as well [a,c,e,g]. Some of your coworkers complain that they cannot get onto certain websites [c,e,g]. You explain that the new network blocks websites that are known for spreading malware. The firewall sends you a daily digest of blocked activity so that you can monitor the system for attack trends [c,d]."
             },
             {
                 "requirement_id": "SC.L1-3.13.5", "title": "Public-Access System Separation", "domain": "SC",
                 "description": "Implement subnetworks for publicly accessible system components that are physically or logically separated from internal networks.",
                 "guidance": "Isolate publicly accessible systems (like a public website) from your internal network using a demilitarized zone (DMZ) or separate VLAN.",
-                "assessment_objectives": "[a] publicly accessible system components are identified; and\n[b] subnetworks for publicly accessible system components are physically or logically separated from internal networks."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] publicly accessible system components are identified; and\n[b] subnetworks for publicly accessible system components are physically or logically separated from internal networks.",
+                "examples": "Example\n\nThe head of recruiting at your firm wants to launch a website to post job openings and allow the public to download an application form [a]. After some discussion, your team realizes it needs to use a firewall to create a perimeter network to do this [b]. You host the server separately from the company's internal network and make sure the network on which it resides is isolated with the proper firewall rules [b]."
             },
             {
                 "requirement_id": "SI.L1-3.14.1", "title": "Flaw Remediation", "domain": "SI",
                 "description": "Identify, report, and correct information and information system flaws in a timely manner.",
                 "guidance": "Implement a patch management process to fix software and firmware flaws within a defined timeframe based on vendor notifications.",
-                "assessment_objectives": "[a] the time within which to identify system flaws is specified;\n[b] system flaws are identified within the specified time frame;\n[c] the time within which to report system flaws is specified;\n[d] system flaws are reported within the specified time frame;\n[e] the time within which to correct system flaws is specified; and\n[f] system flaws are corrected within the specified time frame."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] the time within which to identify system flaws is specified;\n[b] system flaws are identified within the specified time frame;\n[c] the time within which to report system flaws is specified;\n[d] system flaws are reported within the specified time frame;\n[e] the time within which to correct system flaws is specified; and\n[f] system flaws are corrected within the specified time frame.",
+                "examples": "Example\n\nYou know that software vendors typically release patches, service packs, hot fixes, etc. and want to make sure your software is up to date. You develop a policy that requires checking vendor websites for flaw notifications every week [a]. The policy further requires that those flaws be assessed for severity and patched on end-user computers once each week and servers once each month [c,e]. Consistent with that policy, you configure the system to check for updates weekly or daily depending on the criticality of the software [b,e]. Your team reviews available updates and implements the applicable ones according to the defined schedule [f]."
             },
             {
                 "requirement_id": "SI.L1-3.14.2", "title": "Malicious Code Protection", "domain": "SI",
                 "description": "Provide protection from malicious code at appropriate locations within organizational information systems.",
                 "guidance": "Use anti-virus and anti-malware software on workstations, servers, and firewalls to protect against malicious code like viruses and ransomware.",
-                "assessment_objectives": "[a] designated locations for malicious code protection are identified; and\n[b] protection from malicious code at designated locations is provided."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] designated locations for malicious code protection are identified; and\n[b] protection from malicious code at designated locations is provided.",
+                "examples": "Example\n\nYou are buying a new computer and want to protect your company's information from viruses and spyware. You buy and install anti-malware software [a,b]."
             },
             {
                 "requirement_id": "SI.L1-3.14.4", "title": "Update Malicious Code Protection", "domain": "SI",
                 "description": "Update malicious code protection mechanisms when new releases are available.",
                 "guidance": "Configure anti-malware software to update its definition files automatically and frequently (e.g., daily) to protect against the latest threats.",
-                "assessment_objectives": "[a] malicious code protection mechanisms are updated when new releases are available."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] malicious code protection mechanisms are updated when new releases are available.",
+                "examples": "Example\n\nYou have installed anti-malware software to protect a computer from malicious code. Knowing that malware evolves rapidly, you configure the software to automatically check for malware definition updates every day and update as needed [a]."
             },
             {
                 "requirement_id": "SI.L1-3.14.5", "title": "System & File Scanning", "domain": "SI",
                 "description": "Perform periodic scans of the information system and real-time scans of files from external sources as files are downloaded, opened, or executed.",
                 "guidance": "Configure anti-malware software to perform periodic full-system scans and real-time scans of files from external sources like email attachments and USB drives.",
-                "assessment_objectives": "[a] the frequency for malicious code scans is defined;\n[b] malicious code scans are performed with the defined frequency; and\n[c] real-time malicious code scans of files from external sources as files are downloaded, opened, or executed are performed."
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-171A]\n\nDetermine if:\n\n[a] the frequency for malicious code scans is defined;\n[b] malicious code scans are performed with the defined frequency; and\n[c] real-time malicious code scans of files from external sources as files are downloaded, opened, or executed are performed.",
+                "examples": "Example\n\nYou work with your company's email provider to enable enhanced protections that will scan all attachments to identify and quarantine those that may be harmful prior to a user opening them [c]. In addition, you configure antivirus software on each computer and to scan for malicious code every day [a,b]. The software also scans files that are downloaded or copied from removable media such as USB drives. It quarantines any suspicious files and notifies the security team [c]."
             }
         ]
 
@@ -1066,7 +1183,8 @@ def init_database():
                     level_id=level1.id,
                     domain_id=domain.id,
                     guidance=req_data['guidance'],
-                    assessment_objectives=req_data['assessment_objectives']
+                    assessment_objectives=req_data['assessment_objectives'],
+                    examples=req_data.get('examples', '')
                 )
                 db.session.add(requirement)
 
@@ -1931,6 +2049,132 @@ def init_database():
                 "guidance": "Organizations use an automated capability to discover components connected to the network and system software installed. The automated capability must also be able to identify attributes associated with those components. For systems that have already been coupled to the environment, they should allow remote access for inspection of the system software configuration and components. Another option is to place an agent on systems that performs internal system checks to identify system software configuration and components. Collection of switch and router data can also be used to identify systems on networks.",
                 "assessment_objectives": "[a] Automated discovery and management tools for the inventory of system components are identified;\n[b] An up-to-date, complete, accurate, and readily available inventory of system components exists; and\n[c] Automated discovery and management tools are employed to maintain an up-to-date, complete, accurate, and readily available inventory of system components.",
                 "examples": "Example\nWithin your organization, you are in charge of implementing an authoritative inventory of system components. You first create a list of the automated technologies you will use and what each technology will be responsible for identifying [a]. This includes gathering information from switches, routers, access points, primary domain controllers, and all connected systems or devices, whether wired or wireless (printers, IoT, IIoT, OT, IT, etc.) [b]. To keep the data up-to-date, you set a very short search frequency for identifying new components. To maximize availability of this data, all information will be placed in a central inventory/configuration management system, and automated reporting is performed every day [c]. A user dashboard is set up that allows you and other administrators to run reports at any time."
+            },
+            # Identification and Authentication (IA) Requirements
+            {
+                "requirement_id": "IA.L3-3.5.1e", "title": "Bidirectional Authentication", "domain": "IA",
+                "description": "Identify and authenticate systems and system components, where possible, before establishing a network connection using bidirectional authentication that is cryptographically based and replay resistant.",
+                "guidance": "Bidirectional authentication requires that both the client and server authenticate each other before establishing a connection. This prevents man-in-the-middle attacks and ensures that both parties are verified. The authentication should use cryptographic methods and be resistant to replay attacks.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP1] Systems and system components to identify and authenticate are defined;\n[a] Bidirectional authentication that is cryptographically-based is implemented;\n[b] Bidirectional authentication that is replay-resistant is implemented; and\n[c] Systems and system components, where possible, are identified and authenticated before establishing a network connection using bidirectional authentication that is cryptographically-based and replay-resistant.",
+                "examples": "Example 1\n\nYou are the network engineer in charge of implementing this requirement. You have been instructed to implement a technology that will provide mutual authentication for client server connections. You implement Kerberos.\n\nOn the server side, client authentication is implemented by having the client establish a local security context. This is initially accomplished by having the client present credentials which are confirmed by the Active Directory Domain Controller (DC). After that, the client may establish context via a session of a logged-in user. The service does not accept connections from any unauthenticated client.\n\nOn the client side, server authentication requires registration, using administrator privileges, of unique Service Provider Names (SPNs) for each service instance offered. The names are registered in the Active Directory Domain Controller. When a client requests a connection to a service, it composes an SPN for a service instance, using known data or data provided by the user. For authentication, the client presents its SPN to the Key Distribution Center (KDC), and the KDC searches for computers with the registered SPN before allowing a connection via an encrypted message passed to the client for forwarding to the server.\n\nExample 2\n\nYou are the network engineer in charge of implementing this requirement. You have been instructed to implement a technology that will provide authentication for each system prior to connecting to the environment. You implement the company-approved scheme that uses cryptographic keys installed on each system for it to authenticate to the environment, as well as user-based cryptographic keys that are used in combination with a user's password for user-level authentication [a,c]. Your authentication implementation is finalized on each system using an ACM solution. When a system connects to the network, the system uses the system-level certificate to authenticate itself to the switch before the switch will allow it to access the corporate network [a,c]. This is accomplished using 802.1x technology on the switch and by authenticating with a RADIUS server that authenticates itself with the system via cryptographic keys. If either system fails to authenticate to the other, the trust is broken, and the system will not be able to connect to or communicate on the network. You also set up a similar implementation in your wireless access point.\n\nExample 3\n\nYou are the network engineer in charge of implementing the VPN solution used by the organization. To meet this requirement, you use a VPN gateway server and public key infrastructure (PKI) certificates via a certification authority (CA) and a chain of trust. When a client starts a VPN connection, the server presents its certificate to the client and if the certificate is trusted, the client then presents its certificate to the server [a]. If the server validates the client certificate, an established communications channel is opened for the client to finish the authentication process and gain access to the network via the VPN gateway server [c]. If the client fails final authentication, fails the certification validation, or the VPN gateway server fails authentication, the connection is terminated."
+            },
+            {
+                "requirement_id": "IA.L3-3.5.3e", "title": "Block Untrusted Assets", "domain": "IA",
+                "description": "Employ automated or manual/procedural mechanisms to prohibit system components from connecting to organizational systems unless the components are known, authenticated, in a properly configured state, or in a trust profile.",
+                "guidance": "Organizations must implement controls to prevent unauthorized or untrusted devices from connecting to organizational systems. This can be achieved through automated network access control (NAC) solutions, device trust profiles, or manual procedures that verify device authenticity and configuration before allowing network access.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] System components that are known, authenticated, in a properly configured state, or in a trust profile are identified;\n[b] Automated or manual/procedural mechanisms to prohibit system components from connecting to organizational systems are identified; and\n[c] Automated or manual/procedural mechanisms are employed to prohibit system components from connecting to organizational systems unless the components are known, authenticated, in a properly configured state, or in a trust profile.",
+                "examples": "Example 1\n\nIn a Windows environment, you authorize devices to connect to systems by defining configuration rules in one or more Group Policy Objects (GPO) that can be automatically applied to all relevant devices in a domain [a]. This provides you with a mechanism to apply rules for which devices are authorized to connect to any given system and prevent devices that are not within the defined list from connecting [b,c]. For instance, universal serial bus (USB) device rules for authorization can be defined by using a USB device's serial number, model number, and manufacturer information. This information can be used to build a trust profile for a device and authorize it for use by a given system. You use security policies to prevent unauthorized components from connecting to systems [c].\n\nExample 2\n\nYou have been assigned to build trust profiles for all devices allowed to connect to your organization's systems. You want to test the capability starting with printers. You talk to your purchasing department, and they tell you that policy states every printer must be from a specific manufacturer; they only purchase four different models. They also collect all serial numbers from purchased printers. You gather this information and build trust profiles for each device [a,b]. Because your organization shares printers, you push the trust profiles out to organizational systems. Now, the systems are not allowed to connect to a network printer unless they are within the trust profiles you have provided [b,c].\n\nExample 3\n\nYour organization has implemented a network access control solution (NAC) to help ensure that only properly configured computers are allowed to connect to the corporate network [a,b]. The solution first checks for the presence of a certificate to indicate that the device is company-owned. It next reviews the patch state of the computer and forces the installation of any patches that are required by the organization. Finally, it reviews the computer's configuration to ensure that the firewall is active and that the appropriate security policies have been applied. Once the computer has passed all of these requirements, it is allowed access to network resources and defined as a trusted asset for the length of its session [a]. Devices that do not meet all of the requirements are automatically blocked from connecting to the network [c]."
+            },
+            # Incident Response (IR) Requirements
+            {
+                "requirement_id": "IR.L3-3.6.1e", "title": "Security Operations Center", "domain": "IR",
+                "description": "Establish and maintain a security operations center capability that operates 24/7, with allowance for remote/on-call staff.",
+                "guidance": "A Security Operations Center (SOC) provides continuous monitoring and rapid response to security incidents. The SOC should operate 24/7, which can be achieved through a combination of on-site staff, remote staff, and on-call personnel. Automated monitoring tools can help reduce the need for constant human presence while ensuring comprehensive coverage.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] A security operations center capability is established;\n[b] The security operations center capability operates 24/7, with allowance for remote/on-call staff; and\n[c] The security operations center capability is maintained.",
+                "examples": "Example\n\nYou are the Chief Information Security Officer (CISO) of a medium-sized organization. To meet the goal of 24/7 SOC operation, you have decided to adjust the current SOC, which operates five days a week for 12 hours a day, by minimizing active staff members and hiring trusted expert consultants to have on call at all times (i.e., seven days a week, 24 hours a day) [a,b]. You design your SOC to be remotely accessible so your experts can access your environment when needed. You also decide to set up a very strong automated capability that is good at identifying questionable activities and alerting the appropriate staff. You create a policy stating that after an alert goes out, two members of the SOC team must remotely connect to the environment within 15 minutes to address the problem. All staff members also have regular working hours during which they perform other SOC activities, such as updating information to help the automated tool perform its functions [c]."
+            },
+            {
+                "requirement_id": "IR.L3-3.6.2e", "title": "Cyber Incident Response Team", "domain": "IR",
+                "description": "Establish and maintain a cyber incident response team that can be deployed by the organization within 24 hours.",
+                "guidance": "Organizations must have a dedicated incident response team that can quickly respond to cyber incidents. The team should be able to deploy within 24 hours of an incident being detected. Team members should be trained, have clear roles and responsibilities, and have access to necessary tools and resources.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] A cyber incident response team is established;\n[b] The cyber incident response team can be deployed by the organization within 24 hours; and\n[c] The cyber incident response team is maintained.",
+                "examples": "Example\n\nYou are the lead for an IR team within your organization. Your manager is the SOC lead, and she reports to the chief information officer (CIO). As the SOC is alerted and/or identifies incidents within the organization's environments, you lead and deploy teams to resolve the issues, including incidents involving cloud-based systems. You use a custom dashboard that was created for your team members to view and manage incidents, perform response actions, and record actions and notes for each case. You also have your team create an after action report for all incidents to which they respond; this information is used to determine if a given incident requires additional action and reporting [a].\n\nOne day, you receive a message from the SOC that your website has become corrupted. Within minutes, you have a team on the system inspecting logs, analyzing applications, preserving key information, and looking for evidence of tampering/attack [b]. Your team runs through a procedure set for this specific incident type based on a handbook the organization has created and maintains [c]. It is found that a cyberattack caused the corruption, but the corruption caused a crash, which prevented the attack from continuing. Your team takes note of all actions they perform, and at the end of the incident analysis, you send a message to the website lead to inform them of the issue, case number, and notes created by the team. The website lead has their team rebuild the system and validate that the attack no longer works. At the end of the incident, the CISO and CIO are informed of the issue."
+            },
+            # Personnel Security (PS) Requirements
+            {
+                "requirement_id": "PS.L3-3.9.2e", "title": "Adverse Information", "domain": "PS",
+                "description": "Ensure that organizational systems are protected if adverse information develops or is obtained about individuals with access to CUI.",
+                "guidance": "Organizations must have procedures to identify and respond to adverse information about personnel with access to CUI. This includes monitoring personnel, conducting background checks, and having mechanisms to quickly revoke or restrict access when adverse information is discovered.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Individuals with access to CUI are identified;\n[b] Adverse information about individuals with access to CUI is defined;\n[c] Organizational systems to which individuals have access are identified; and\n[d] Mechanisms are in place to protect organizational systems if adverse information develops or is obtained about individuals with access to CUI.",
+                "examples": "Example\n\nYou learn that one of your employees has been convicted on shoplifting charges. Based on organizational policy, you report this information to human resources (HR), which verifies the information with a criminal background check [a,b,c]. Per policy, you increase the monitoring of the employee's access to ensure that the employee does not exhibit patterns of behavior consistent with an insider threat [d]. You maintain contact with HR as they investigate the adverse information so that you can take stronger actions if required, such as removing access to organizational systems."
+            },
+            # Risk Assessment (RA) Requirements
+            {
+                "requirement_id": "RA.L3-3.11.1e", "title": "Threat-Informed Risk Assessment", "domain": "RA",
+                "description": "Employ threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, as part of a risk assessment to guide and inform the development of organizational systems, security architectures, selection of security solutions, monitoring, threat hunting, and response and recovery activities.",
+                "guidance": "Organizations should use threat intelligence to inform risk assessments and security decisions. Threat intelligence can come from open sources, commercial feeds, and DoD-provided sources. This intelligence should be used to guide system development, architecture decisions, security solution selection, monitoring activities, threat hunting, and incident response.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP1] Sources of threat intelligence are defined;\n[a] A risk assessment methodology is identified;\n[b] Threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, are employed as part of a risk assessment to guide and inform the development of organizational systems and security architectures;\n[c] Threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, are employed as part of a risk assessment to guide and inform the selection of security solutions;\n[d] Threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, are employed as part of a risk assessment to guide and inform system monitoring activities;\n[e] Threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, are employed as part of a risk assessment to guide and inform threat hunting activities; and\n[f] Threat intelligence, at a minimum from open or commercial sources, and any DoD-provided sources, are employed as part of a risk assessment to guide and inform response and recovery activities.",
+                "examples": "Example\n\nYour organization receives a commercial threat intelligence feed from FIRST and government threat intelligence feeds from both USCERT and DoD/DC3 to help learn about recent threats and any additional information the threat feeds provide [b,c,d,e,f]. Your organization uses the threat intelligence for multiple purposes:\n\n• To perform up-to-date risk assessments for the organization [a];\n\n• To add rules to the automated system put in place to identify threats (indicators of compromise, or IOCs) on the organization's network [e];\n\n• To guide the organization in making informed selections of security solutions [c];\n\n• To shape the way the organization performs system monitoring activities [d];\n\n• To manage the escalation process for identified incidents, handling specific events, and performing recovery actions [f];\n\n• To provide additional information to the hunt team to identify threat activities [e];\n\n• To inform the development and design decisions for organizational systems and the overall security architecture, as well as the network architecture [b,c];\n\n• To assist in decision-making regarding systems that are part of the primary network and systems that are placed in special enclaves for additional protections [b]; and\n\n• To determine additional security measures based on current threat activities taking place in similar industry networks [c,d,e,f]."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.2e", "title": "Threat Hunting", "domain": "RA",
+                "description": "Conduct cyber threat hunting activities on an on-going aperiodic basis or when indications warrant, to search for indicators of compromise in organizational systems and detect, track, and disrupt threats that evade existing controls.",
+                "guidance": "Threat hunting involves proactively searching for threats and indicators of compromise that may have evaded existing security controls. Threat hunting should be conducted on an ongoing, aperiodic basis or when specific indicators warrant investigation. The process involves analyzing system logs, network traffic, and other data sources to identify suspicious activity.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP4] Organizational systems to search for indicators of compromise are defined;\n[a] Indicators of compromise are identified;\n[b] Cyber threat hunting activities are conducted on an on-going aperiodic basis or when indications warrant, to search for indicators of compromise in organizational systems; and\n[c] Cyber threat hunting activities are conducted on an on-going aperiodic basis or when indications warrant, to detect, track, and disrupt threats that evade existing controls.",
+                "examples": "Example\n\nYou are the lead for your organization's cyber threat hunting team. You have local and remote staff on the team to process threat intelligence. Your team is tied closely with the SOC and IR teams. Through a DoD (DC3) intelligence feed, you receive knowledge of a recent APT's attacks on defense contractors. The intelligence feed provided the indicators of compromise for a zero-day attack that most likely started within the past month. After receiving the IOCs, you use a template for your organization to place the information in a standard format your team understands. You then email the information to your team members and place the information in your hunt team's dashboard, which tracks all IOCs [a].\n\nYour team starts by using the information to hunt for IOCs on the environment [b]. One of your team members quickly responds, providing information from the SIEM that an HR system's logs show evidence that IOCs related to this threat occurred three days ago. The team contacts the owner of the system as they take the system offline into a quarantined environment. Your team pulls all logs from the system and clones the storage on the system. Members go through the logs to look for other systems that may be part of the APT's attack [c]. While the team is cloning the storage system for evidence, you alert the IR team about the issue. After full forensics of the system, your team has verified your company has been hit by the APT, but nothing was taken and no additional attacks happened. You also alert DoD (DC3) about the finding and discuss the matter with them. There is an after action report and a briefing given to management to make them aware of the issue."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.3e", "title": "Advanced Risk Identification", "domain": "RA",
+                "description": "Employ advanced automation and analytics capabilities in support of analysts to predict and identify risks to organizations, systems, and system components.",
+                "guidance": "Organizations should use advanced automation and analytics tools to help identify risks. These tools can analyze large volumes of data, identify patterns, and predict potential security issues. Analysts use these tools to focus their attention on the most critical risks.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Advanced automation and analytics capabilities to predict and identify risks to organizations, systems, and system components are identified;\n[b] Analysts to predict and identify risks to organizations, systems, and system components are identified; and\n[c] Advanced automation and analytics capabilities are employed in support of analysts to predict and identify risks to organizations, systems, and system components.",
+                "examples": "Example\n\nYou are responsible for information security in your organization. The organization holds and processes CUI in an enterprise. To protect that data, you want to minimize phishing attacks through the use of Security Orchestration and Automated Response (SOAR). Rather than relying on analysts to manually inspect each inbound item, emails containing links and/or attachments are processed by your automation playbook. Implementation of these processes involves sending all email links and attachments to detonation chambers or sandboxes prior to delivery to the recipient. When the email is received, SOAR extracts all URL links and attachments from the content and sends them for analysis and testing [a]. The domains in the URLs and the full URLs are processed against bad domain and URL lists. Next, a browser in a sandbox downloads the URLs for malware testing. Lastly, any attachments are sent to detonation chambers to identify if they attempt malicious activities. The hash of the attachments is sent to services to identify if it is known malware [b]. If any one of the items triggers a malware warning from the sandbox, detonation chamber, domain/URL validation service, attachment hash check services, or AV software, an alert about the original email is sent to team members with the recommendation to quarantine it. The team is given the opportunity to select a \"take action\" button, which would have the SOAR solution take actions to block that email and similar emails from being received by the organization [c]."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.4e", "title": "Security Solution Rationale", "domain": "RA",
+                "description": "Document or reference in the system security plan the security solution selected, the rationale for the security solution, and the risk determination.",
+                "guidance": "Organizations must document their security solution selections, including the rationale for choosing specific solutions and the risk determinations that informed those decisions. This documentation should be included in the system security plan (SSP) and follow guidance from NIST SP 800-18.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] The system security plan documents or references the security solution selected;\n[b] The system security plan documents or references the rationale for the security solution; and\n[c] The system security plan documents or references the risk determination.",
+                "examples": "Example\n\nYou are responsible for information security in your organization. Following CMMC requirement RA.L3-3.11.1e – Threat Informed Risk Assessment, your team uses threat intelligence to complete a risk assessment and make a risk determination for all elements of your enterprise. Based on that view of risk, your team decides that requirement RA.L3-3.11.2e – Threat Hunting is a requirement that is very important in protecting your organization's use of CUI, and you have determined the solution selected could potentially add risk. You want to detect an adversary as soon as possible when they breach the network before any CUI can be exfiltrated. However, there are multiple threat hunting solutions, and each solution has a different set of features that will provide different success rates in identifying IOCs.\n\nAs a result, some solutions increase the risk to the organization by being less capable in detecting and tracking an adversary in your networks. To reduce risk, you evaluate five threat hunting solutions and in each case determine the number of IOCs for which there is a monitoring mechanism. You pick the solution that is cost effective, easy to operate, and optimizes IOC detection for your enterprise; purchase, install, and train SOC personnel on its use; and document the risk-based analysis of alternatives in the SSP. In creating that documentation in the SSP, you follow the guidance found in NIST SP 800-18, Guide for Developing Security Plans for Federal Information Systems [a,b,c]."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.5e", "title": "Security Solution Effectiveness", "domain": "RA",
+                "description": "Assess the effectiveness of security solutions at least annually or upon receipt of relevant cyber threat information, or in response to a relevant cyber incident, to address anticipated risk to organizational systems and the organization based on current and accumulated threat intelligence.",
+                "guidance": "Organizations must regularly assess whether their security solutions are effective in addressing current threats. Assessments should be conducted at least annually, when new threat intelligence is received, or in response to security incidents. The assessment should consider current and accumulated threat intelligence to determine if solutions need to be updated or replaced.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Security solutions are identified;\n[b] Current and accumulated threat intelligence is identified;\n[c] Anticipated risk to organizational systems and the organization based on current and accumulated threat intelligence is identified; and\n[d] The effectiveness of security solutions is assessed at least annually or upon receipt of relevant cyber threat information, or in response to a relevant cyber incident, to address anticipated risk to organizational systems and the organization based on current and accumulated threat intelligence.",
+                "examples": "Example\n\nYou are responsible for information security in your organization, which holds and processes CUI. The organization subscribes to multiple threat intelligence sources [b]. In order to assess the effectiveness of current security solutions, the security team analyzes any new incidents reported in the threat feed. They identify weaknesses that were leveraged by malicious actors and subsequently look for similar weaknesses in their own security architecture[a,c]. This analysis is passed to the architecture team for engineering change recommendations, including system patching guidance, new sensors, and associated alerts that should be generated, and to identify ways to mitigate, transfer, or accept the risk necessary to respond to events if they occur within their own organization [d]."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.6e", "title": "Supply Chain Risk Response", "domain": "RA",
+                "description": "Assess, respond to, and monitor supply chain risks associated with organizational systems and system components.",
+                "guidance": "Organizations must identify, assess, and monitor risks in their supply chain that could affect the security of organizational systems. This includes risks from vendors, suppliers, and third-party service providers. Organizations should have processes to respond to supply chain risks when they are identified.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Supply chain risks associated with organizational systems and system components are identified;\n[b] Supply chain risks associated with organizational systems and system components are assessed;\n[c] Supply chain risks associated with organizational systems and system components are responded to; and\n[d] Supply chain risks associated with organizational systems and system components are monitored.",
+                "examples": "Example\n\nYou are responsible for information security in your organization, which holds and processes CUI. One of your responsibilities is to manage risk associated with your supply chain that may provide an entry point for the adversary. First, you acquire threat information by subscribing to reports that identify supply chain attacks in enough detail that you are able to identify the risk points in your organization's supply chain [a]. You create an organization-defined prioritized list of risks the organization may encounter and determine the responses to be implemented to mitigate those risks [b,c].\n\nIn addition to incident information, the intelligence provider also makes recommendations for monitoring and auditing your supply chain. You assess, integrate, correlate, and analyze this information so you can use it to acquire monitoring tools to help identify supply chain events that could be an indicator of an incident. This monitoring tool provides visibility of the entire attack surface, including your vendors' security posture [d]. Second, you analyze the incident information in the intelligence report to help identify defensive tools that will help respond to each of those known supply chain attack techniques as soon as possible after such an incident is detected, thus mitigating risk associated with known techniques."
+            },
+            {
+                "requirement_id": "RA.L3-3.11.7e", "title": "Supply Chain Risk Plan", "domain": "RA",
+                "description": "Develop a plan for managing supply chain risks associated with organizational systems and system components; update the plan at least annually, and upon receipt of relevant cyber threat information, or in response to a relevant cyber incident.",
+                "guidance": "Organizations must develop and maintain a comprehensive plan for managing supply chain risks. The plan should be updated at least annually, when new threat information is received, or in response to supply chain security incidents. The plan should document processes for identifying, assessing, monitoring, and responding to supply chain risks.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Supply chain risks associated with organizational systems and system components are identified;\n[b] Organizational systems and system components to include in a supply chain risk management plan are identified;\n[c] A plan for managing supply chain risks associated with organizational systems and system components is developed; and\n[d] The plan for managing supply chain risks is updated at least annually, and upon receipt of relevant cyber threat information, or in response to a relevant cyber incident.",
+                "examples": "Example\n\nYou are responsible for information security in your organization, and you have created a supply chain risk management plan [a,b,c]. One of the organization's suppliers determines that it has been the victim of a cyberattack. Your security team meets with the supplier to determine the nature of the attack and to understand the adversary, the attack, the potential for corruption of delivered goods or services, and current as well as future risks. The understanding of the supply chain will help protect the local environment. Subsequently, you update the risk management plan to include a description of the necessary configuration changes or upgrades to monitoring tools to improve the ability to identify the new risks, and when improved tools are available, you document the acquisition of defensive tools and associated functionality to help mitigate any of the identified techniques [d]."
+            },
+            # Security Assessment (CA) Requirements
+            {
+                "requirement_id": "CA.L3-3.12.1e", "title": "Penetration Testing", "domain": "CA",
+                "description": "Conduct penetration testing at least annually or when significant security changes are made to the system, leveraging automated scanning tools and ad hoc tests using subject matter experts.",
+                "guidance": "Organizations must conduct regular penetration testing to identify vulnerabilities and test the effectiveness of security controls. Testing should be performed at least annually or when significant security changes are made. Testing should combine automated tools with manual testing by security experts.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Automated scanning tools are identified;\n[b] Ad hoc tests using subject matter experts are identified; and\n[c] Penetration testing is conducted at least annually or when significant security changes are made to the system, leveraging automated scanning tools and ad hoc tests using subject matter experts.",
+                "examples": "Example\n\nYou are responsible for information security in your organization. Leveraging a contract managed by the CIO, you hire an external expert penetration team annually to test the security of the organization's enclave that stores and processes CUI [a,c]. You hire the same firm annually or on an ad hoc basis when significant changes are made to the architecture or components that affect security [b,c]."
+            },
+            # System and Communications Protection (SC) Requirements
+            {
+                "requirement_id": "SC.L3-3.13.4e", "title": "Isolation", "domain": "SC",
+                "description": "Employ physical isolation techniques or logical isolation techniques or both in organizational systems and system components.",
+                "guidance": "Organizations should isolate systems and system components to limit the impact of security incidents and prevent unauthorized access. Isolation can be achieved through physical separation, logical separation (e.g., network segmentation, VLANs), or a combination of both. The choice of isolation technique should be based on risk assessment and system requirements.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP1] One or more of the following is/are selected: physical isolation techniques; logical isolation techniques;\n[ODP2] Physical isolation techniques are defined (if selected);\n[ODP3] Logical isolation techniques are defined (if selected);\n[a] Physical isolation techniques or logical isolation techniques or both are employed in organizational systems and system components.",
+                "examples": "Example\n\nYou are responsible for information security in your organization, which holds and processes CUI. You have decided to isolate the systems processing CUI by limiting all communications in and out that enclave with cross-domain interface devices that implement access control [a]. Your security team has identified all the systems containing such CUI, documented network design details, developed network diagrams showing access control points, documented the logic for the access control enforcement decisions, described the interface and protocol to the identification and authentication mechanisms, and documented all details associated with the ACLs, including review, updates, and credential revocation procedures."
+            },
+            # System and Information Integrity (SI) Requirements
+            {
+                "requirement_id": "SI.L3-3.14.1e", "title": "Integrity Verification", "domain": "SI",
+                "description": "Verify the integrity of security critical and essential software using root of trust mechanisms or cryptographic signatures.",
+                "guidance": "Organizations must verify the integrity of security-critical and essential software to ensure it has not been tampered with. This can be achieved through root of trust mechanisms (e.g., Trusted Platform Module) or cryptographic signatures. Software integrity verification should occur before execution and when software is updated.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP1] Security critical or essential software is defined;\n[a] Root of trust mechanisms or cryptographic signatures are identified; and\n[b] The integrity of security critical and essential software is verified using root of trust mechanisms or cryptographic signatures.",
+                "examples": "Example 1\n\nYou are responsible for information security in your organization. Your security team has identified the software used to process CUI, and the organization has decided it is mission-critical software that must be protected. You take three actions. First, you ensure all of the platform's configuration information used at boot is hashed and stored in a TPM [a]. Second, you ensure that the platforms used to execute the software are started with a digitally signed software chain to a secure boot process using the TPM. Finally, you ensure the essential applications are cryptographically protected with a digital signature when stored and the signature is verified prior to execution [b].\n\nExample 2\n\nYour organization has a software security team, and they are required to validate unsigned essential software provided to systems that do not have TPM modules. The organization has a policy stating no software can be executed on a system unless its hash value matches that of a hash stored in the approved software library kept by the software security team [a]. This action is performed by implementing software restriction policies on systems. The team tests the software on a sandbox system, and once it is proven safe, they run a hashing function on the software to create a hash value. This hash value is placed in a software library so the system will know it can execute the software [b]. Any changes to the software without the software security team's approval will result in the software failing the security tests, and it will be prevented from executing."
+            },
+            {
+                "requirement_id": "SI.L3-3.14.3e", "title": "Specialized Asset Security", "domain": "SI",
+                "description": "Ensure that specialized assets including IoT, IIoT, OT, GFE, Restricted Information Systems and test equipment are included in the scope of the specified enhanced security requirements or are segregated in purpose-specific networks.",
+                "guidance": "Specialized assets such as IoT devices, operational technology (OT), government furnished equipment (GFE), and test equipment may have unique security requirements or limitations. Organizations must either apply enhanced security requirements to these assets or segregate them in purpose-specific networks to limit their exposure and impact on other systems.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[a] Specialized assets including IoT, IIoT, OT, GFE, Restricted Information Systems and test equipment are included in the scope of the specified enhanced security requirements; and\n[b] Systems and system components that are not included in specialized assets including IoT, IIoT, OT, GFE, Restricted Information Systems and test equipment are segregated in purpose-specific networks.",
+                "examples": "Example\n\nYou are responsible for information security in your organization, which processes CUI on the network, and this same network includes GFE for which the configuration is mandated by the government. The GFE is needed to process CUI information [a]. Because the company cannot manage the configuration of the GFE, it has been augmented by placing a bastion host between it and the network. The bastion host meets the requirements that the GFE cannot, and is used to send CUI files to and from the GFE for processing. You and your security team document in the SSP all of the GFE to include GFE connectivity diagrams, a description of the isolation mechanism, and a description of how your organization manages risk associated with that GFE [a]."
+            },
+            {
+                "requirement_id": "SI.L3-3.14.6e", "title": "Threat-Guided Intrusion Detection", "domain": "SI",
+                "description": "Use threat indicator information and effective mitigations obtained from, at a minimum, open or commercial sources, and any DoD-provided sources, to guide and inform intrusion detection and threat hunting.",
+                "guidance": "Organizations should use threat intelligence to improve their intrusion detection and threat hunting capabilities. Threat indicators and mitigations from open sources, commercial feeds, and DoD-provided sources should be integrated into security monitoring tools and processes to enhance detection of advanced threats.",
+                "assessment_objectives": "ASSESSMENT OBJECTIVES [NIST SP 800-172A]\n\nDetermine if:\n\n[ODP1] External organizations from which to obtain threat indicator information and effective mitigations are defined;\n[a] Threat indicator information is identified;\n[b] Effective mitigations are identified;\n[c] Intrusion detection approaches are identified;\n[d] Threat hunting activities are identified; and\n[e] Threat indicator information and effective mitigations obtained from, at a minimum, open or commercial sources and any DoD-provided sources, are used to guide and inform intrusion detection and threat hunting.",
+                "examples": "Example\n\nYou are responsible for information security in your organization. You have maintained an effective intrusion detection capability for some time, but now you decide to introduce a threat hunting capability informed by internal and external threat intelligence [a,c,d,e]. You install a SIEM system that leverages threat information to provide functionality to:\n\n• analyze logs, data sources, and alerts;\n\n• query data to identify anomalies;\n\n• identify variations from baseline threat levels;\n\n• provide machine learning capabilities associated with the correlation of anomalous data characteristics across the enterprise; and\n\n• categorize data sets based on expected data values.\n\nYour team also manages an internal mitigation plan (playbook) for all known threats for your environment. This playbook is used to implement effective mitigation strategies across the environment [b]. Some of the mitigation strategies are developed by team members, and others are obtained by threat feed services."
             }
         ]
 
@@ -1958,3 +2202,4 @@ if __name__ == '__main__':
     with app.app_context():
         init_database()
     app.run(debug=True)
+

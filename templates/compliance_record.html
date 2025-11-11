@@ -66,35 +66,35 @@
                             Compliance Status <span class="text-red-500">*</span>
                         </label>
                         <div class="space-y-3">
-                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'compliant' %}border-green-500 bg-green-50{% else %}border-gray-300{% endif %}">
+                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'compliant' %}border-green-500 bg-green-50{% else %}border-gray-300{% endif %}" onclick="handleCompliantSelection()">
                                 <input type="radio" name="status" value="compliant" 
-                                       class="form-radio h-4 w-4 text-green-600 focus:ring-green-500" 
+                                       class="form-radio h-4 w-4 text-green-600 focus:ring-green-500 status-radio" 
                                        {% if record and record.status == 'compliant' %}checked{% endif %}>
                                 <div class="ml-3">
                                     <div class="flex items-center">
                                         <i class="fas fa-check text-green-600 mr-2"></i>
                                         <span class="font-medium text-gray-900">Compliant</span>
                                     </div>
-                                    <p class="text-sm text-gray-600">This requirement is fully implemented and meets all criteria.</p>
+                                    <p class="text-sm text-gray-600">This requirement is fully implemented and meets all criteria. All objectives will be marked as completed.</p>
                                 </div>
                             </label>
 
-                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'in_progress' %}border-yellow-500 bg-yellow-50{% else %}border-gray-300{% endif %}">
+                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'in_progress' %}border-yellow-500 bg-yellow-50{% else %}border-gray-300{% endif %}" onclick="handleInProgressSelection()">
                                 <input type="radio" name="status" value="in_progress" 
-                                       class="form-radio h-4 w-4 text-yellow-600 focus:ring-yellow-500" 
+                                       class="form-radio h-4 w-4 text-yellow-600 focus:ring-yellow-500 status-radio" 
                                        {% if record and record.status == 'in_progress' %}checked{% endif %}>
                                 <div class="ml-3">
                                     <div class="flex items-center">
                                         <i class="fas fa-clock text-yellow-600 mr-2"></i>
                                         <span class="font-medium text-gray-900">In Progress</span>
                                     </div>
-                                    <p class="text-sm text-gray-600">Implementation is underway but not yet complete.</p>
+                                    <p class="text-sm text-gray-600">Implementation is underway but not yet complete. Select which objectives are completed below.</p>
                                 </div>
                             </label>
 
-                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'non_compliant' %}border-red-500 bg-red-50{% else %}border-gray-300{% endif %}">
+                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if record and record.status == 'non_compliant' %}border-red-500 bg-red-50{% else %}border-gray-300{% endif %}" onclick="handleNonCompliantSelection()">
                                 <input type="radio" name="status" value="non_compliant" 
-                                       class="form-radio h-4 w-4 text-red-600 focus:ring-red-500" 
+                                       class="form-radio h-4 w-4 text-red-600 focus:ring-red-500 status-radio" 
                                        {% if record and record.status == 'non_compliant' %}checked{% endif %}>
                                 <div class="ml-3">
                                     <div class="flex items-center">
@@ -105,9 +105,9 @@
                                 </div>
                             </label>
 
-                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if not record or record.status == 'not_started' %}border-gray-500 bg-gray-50{% else %}border-gray-300{% endif %}">
+                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {% if not record or record.status == 'not_started' %}border-gray-500 bg-gray-50{% else %}border-gray-300{% endif %}" onclick="handleNotStartedSelection()">
                                 <input type="radio" name="status" value="not_started" 
-                                       class="form-radio h-4 w-4 text-gray-600 focus:ring-gray-500" 
+                                       class="form-radio h-4 w-4 text-gray-600 focus:ring-gray-500 status-radio" 
                                        {% if not record or record.status == 'not_started' %}checked{% endif %}>
                                 <div class="ml-3">
                                     <div class="flex items-center">
@@ -119,6 +119,43 @@
                             </label>
                         </div>
                     </div>
+
+                    <!-- Assessment Objectives (shown when in progress or compliant) -->
+                    {% if objectives %}
+                    <div id="objectives-section" class="{% if record and record.status == 'in_progress' %}block{% elif record and record.status == 'compliant' %}block{% else %}hidden{% endif %}">
+                        <label class="block text-sm font-medium text-gray-700 mb-3">
+                            Assessment Objectives <span class="text-red-500" id="objectives-required" style="{% if record and record.status == 'in_progress' %}display: inline;{% else %}display: none;{% endif %}">*</span>
+                        </label>
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                            {% for objective in objectives %}
+                            <label class="flex items-start p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 objective-checkbox">
+                                <input type="checkbox" 
+                                       name="objective_{{ objective.label }}" 
+                                       value="on"
+                                       class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded objective-checkbox-input"
+                                       {% if objective.label in completed_objectives %}checked{% endif %}
+                                       {% if record and record.status == 'compliant' %}checked disabled{% endif %}>
+                                <div class="ml-3 flex-1">
+                                    <div class="flex items-center">
+                                        <span class="font-medium text-gray-900">[{{ objective.label }}]</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600 mt-1">{{ objective.description }}</p>
+                                </div>
+                            </label>
+                            {% endfor %}
+                            <p class="text-xs text-blue-700 mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                <span id="objectives-hint">
+                                    {% if record and record.status == 'compliant' %}
+                                        All objectives are automatically marked as completed when status is "Compliant".
+                                    {% else %}
+                                        Select which objectives have been completed. This is required when status is "In Progress".
+                                    {% endif %}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
 
                     <!-- Notes Section -->
                     <div>
@@ -229,23 +266,6 @@
                 </div>
             </div>
 
-            {% if requirement.assessment_objectives %}
-            <div class="bg-white shadow-lg rounded-lg mb-6">
-                <div class="px-6 py-4 border-b border-gray-200">
-                    <h3 class="text-lg font-medium text-gray-900">
-                        <i class="fas fa-bullseye text-green-600 mr-2"></i>
-                        Assessment Objectives (NIST SP 800-171A)
-                    </h3>
-                </div>
-                <div class="p-6 text-sm text-gray-700">
-                    {% for line in requirement.assessment_objectives.split('\n') %}
-                        {% if line.strip() %}
-                            <div class="mb-1">{{ line }}</div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
 
             <!-- Implementation Guidance -->
             {% if requirement.guidance %}
@@ -306,12 +326,12 @@
 <script>
 function markCompliant() {
     document.querySelector('input[value="compliant"]').checked = true;
-    document.getElementById('complianceForm').submit();
+    handleCompliantSelection();
 }
 
 function markInProgress() {
     document.querySelector('input[value="in_progress"]').checked = true;
-    document.getElementById('complianceForm').submit();
+    handleInProgressSelection();
 }
 
 function deleteArtifact() {
@@ -321,16 +341,137 @@ function deleteArtifact() {
     }
 }
 
-// Auto-save draft functionality (could be enhanced)
-let notesField = document.getElementById('notes');
-let autoSaveTimeout;
+function handleCompliantSelection() {
+    const objectivesSection = document.getElementById('objectives-section');
+    const objectivesRequired = document.getElementById('objectives-required');
+    const objectivesHint = document.getElementById('objectives-hint');
+    const checkboxInputs = document.querySelectorAll('.objective-checkbox-input');
+    
+    if (objectivesSection) {
+        objectivesSection.classList.remove('hidden');
+        objectivesSection.classList.add('block');
+    }
+    if (objectivesRequired) {
+        objectivesRequired.style.display = 'none';
+    }
+    if (objectivesHint) {
+        objectivesHint.textContent = 'All objectives are automatically marked as completed when status is "Compliant".';
+    }
+    // Check all objectives and disable them
+    checkboxInputs.forEach(checkbox => {
+        checkbox.checked = true;
+        checkbox.disabled = true;
+    });
+}
 
-notesField.addEventListener('input', function() {
-    clearTimeout(autoSaveTimeout);
-    autoSaveTimeout = setTimeout(function() {
-        // Auto-save functionality could be implemented here
-        console.log('Auto-saving draft...');
-    }, 2000);
+function handleInProgressSelection() {
+    const objectivesSection = document.getElementById('objectives-section');
+    const objectivesRequired = document.getElementById('objectives-required');
+    const objectivesHint = document.getElementById('objectives-hint');
+    const checkboxInputs = document.querySelectorAll('.objective-checkbox-input');
+    
+    if (objectivesSection) {
+        objectivesSection.classList.remove('hidden');
+        objectivesSection.classList.add('block');
+    }
+    if (objectivesRequired) {
+        objectivesRequired.style.display = 'inline';
+    }
+    if (objectivesHint) {
+        objectivesHint.textContent = 'Select which objectives have been completed. This is required when status is "In Progress".';
+    }
+    // Enable all checkboxes (user can select which are completed)
+    checkboxInputs.forEach(checkbox => {
+        checkbox.disabled = false;
+    });
+}
+
+function handleNonCompliantSelection() {
+    const objectivesSection = document.getElementById('objectives-section');
+    const objectivesRequired = document.getElementById('objectives-required');
+    const checkboxInputs = document.querySelectorAll('.objective-checkbox-input');
+    
+    if (objectivesSection) {
+        objectivesSection.classList.add('hidden');
+        objectivesSection.classList.remove('block');
+    }
+    if (objectivesRequired) {
+        objectivesRequired.style.display = 'none';
+    }
+    // Uncheck all objectives
+    checkboxInputs.forEach(checkbox => {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+    });
+}
+
+function handleNotStartedSelection() {
+    const objectivesSection = document.getElementById('objectives-section');
+    const objectivesRequired = document.getElementById('objectives-required');
+    const checkboxInputs = document.querySelectorAll('.objective-checkbox-input');
+    
+    if (objectivesSection) {
+        objectivesSection.classList.add('hidden');
+        objectivesSection.classList.remove('block');
+    }
+    if (objectivesRequired) {
+        objectivesRequired.style.display = 'none';
+    }
+    // Uncheck all objectives
+    checkboxInputs.forEach(checkbox => {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+    });
+}
+
+// Add event listeners to status radio buttons
+document.addEventListener('DOMContentLoaded', function() {
+    const statusRadios = document.querySelectorAll('.status-radio');
+    statusRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'compliant') {
+                handleCompliantSelection();
+            } else if (this.value === 'in_progress') {
+                handleInProgressSelection();
+            } else if (this.value === 'non_compliant') {
+                handleNonCompliantSelection();
+            } else if (this.value === 'not_started') {
+                handleNotStartedSelection();
+            }
+        });
+    });
+    
+    // Validate form submission - ensure at least one objective is selected when in_progress
+    const form = document.getElementById('complianceForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const status = document.querySelector('input[name="status"]:checked');
+            if (status && status.value === 'in_progress') {
+                const objectivesSection = document.getElementById('objectives-section');
+                if (objectivesSection && !objectivesSection.classList.contains('hidden')) {
+                    const checkedObjectives = document.querySelectorAll('.objective-checkbox-input:checked');
+                    if (checkedObjectives.length === 0) {
+                        e.preventDefault();
+                        alert('Please select at least one completed objective when status is "In Progress".');
+                        return false;
+                    }
+                }
+            }
+        });
+    }
+    
+    // Auto-save draft functionality (could be enhanced)
+    let notesField = document.getElementById('notes');
+    if (notesField) {
+        let autoSaveTimeout;
+        notesField.addEventListener('input', function() {
+            clearTimeout(autoSaveTimeout);
+            autoSaveTimeout = setTimeout(function() {
+                // Auto-save functionality could be implemented here
+                console.log('Auto-saving draft...');
+            }, 2000);
+        });
+    }
 });
 </script>
 {% endblock %}

@@ -199,25 +199,20 @@
     <div class="mt-8 bg-white shadow-lg rounded-lg p-6">
         <h3 class="text-lg font-medium text-gray-900 mb-4">Your Progress Summary</h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {% set total_reqs = requirements|length %}
-            {% set compliant_count = user_records.values()|selectattr('status', 'equalto', 'compliant')|list|length %}
-            {% set in_progress_count = user_records.values()|selectattr('status', 'equalto', 'in_progress')|list|length %}
-            {% set non_compliant_count = user_records.values()|selectattr('status', 'equalto', 'non_compliant')|list|length %}
-            
             <div class="text-center">
-                <div class="text-2xl font-bold text-green-600 mb-1">{{ compliant_count }}</div>
+                <div class="text-2xl font-bold text-green-600 mb-1">{{ progress_summary.compliant }}</div>
                 <div class="text-sm text-gray-600">Compliant</div>
             </div>
             <div class="text-center">
-                <div class="text-2xl font-bold text-yellow-600 mb-1">{{ in_progress_count }}</div>
+                <div class="text-2xl font-bold text-yellow-600 mb-1">{{ progress_summary.in_progress }}</div>
                 <div class="text-sm text-gray-600">In Progress</div>
             </div>
             <div class="text-center">
-                <div class="text-2xl font-bold text-red-600 mb-1">{{ non_compliant_count }}</div>
+                <div class="text-2xl font-bold text-red-600 mb-1">{{ progress_summary.non_compliant }}</div>
                 <div class="text-sm text-gray-600">Non-Compliant</div>
             </div>
             <div class="text-center">
-                <div class="text-2xl font-bold text-gray-600 mb-1">{{ total_reqs - (compliant_count + in_progress_count + non_compliant_count) }}</div>
+                <div class="text-2xl font-bold text-gray-600 mb-1">{{ progress_summary.not_started }}</div>
                 <div class="text-sm text-gray-600">Not Started</div>
             </div>
         </div>
