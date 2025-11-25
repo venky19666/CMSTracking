@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from flask import (Flask, flash, jsonify, make_response, redirect,
                    render_template, request, send_file, session, url_for)
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -23,6 +24,17 @@ app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB
 STATIC_UPLOADS_SUBDIR = 'uploads'
 app.config['STATIC_UPLOADS_SUBDIR'] = STATIC_UPLOADS_SUBDIR
 app.config['UPLOAD_EXTENSIONS'] = {'.pdf', '.png', '.jpg', '.jpeg', '.txt', '.doc', '.docx', '.xlsx', '.csv'}
+
+SECURITY_QUESTIONS = [
+    {'id': 'first_pet', 'text': 'What is the name of your first pet?'},
+    {'id': 'birth_city', 'text': 'In what city were you born?'},
+    {'id': 'favorite_teacher', 'text': 'What is the name of your favorite teacher?'},
+    {'id': 'childhood_nickname', 'text': 'What was your childhood nickname?'},
+    {'id': 'favorite_book', 'text': 'What is your favorite book?'},
+    {'id': 'favorite_food', 'text': 'What is your favorite food?'},
+    {'id': 'dream_job', 'text': 'What was your dream job as a child?'},
+    {'id': 'first_school', 'text': 'What is the name of your first school?'}
+]
 
 def _ensure_upload_dir_exists():
     # Use explicit static folder path
@@ -45,6 +57,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Authorization flag: only authorized users may access the system
     is_authorized = db.Column(db.Boolean, default=False, nullable=False)
+    security_profile = db.relationship('UserSecurity', backref='user', uselist=False)
 
 class CMMCLevel(db.Model):
     __tablename__ = 'cmmc_level'
@@ -107,6 +120,19 @@ class ComplianceRecord(db.Model):
         self.completed_objectives = json.dumps(objectives_list) if objectives_list else None
 
 # New Models for objectives (processes and devices)
+class UserSecurity(db.Model):
+    __tablename__ = 'user_security'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    question_key = db.Column(db.String(50), nullable=False)
+    answer_hash = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def verify_answer(self, candidate: str) -> bool:
+        candidate_normalized = (candidate or '').strip().lower()
+        return check_password_hash(self.answer_hash, candidate_normalized)
+
+
 class ServiceAccount(db.Model):
     __tablename__ = 'service_account'
     id = db.Column(db.Integer, primary_key=True)
@@ -133,6 +159,29 @@ def _generate_token() -> str:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
+
+
+EMAIL_PATTERN = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+
+
+def validate_password_strength(password: str) -> bool:
+    """
+    Password must be at least 8 chars, include letters, numbers, and special characters.
+    """
+    if not password or len(password) < 8:
+        return False
+    has_letter = re.search(r'[A-Za-z]', password)
+    has_number = re.search(r'\d', password)
+    has_special = re.search(r'[^A-Za-z0-9]', password)
+    return all([has_letter, has_number, has_special])
+
+
+def normalize_security_answer(answer: str) -> str:
+    return (answer or '').strip().lower()
+
+
+def is_valid_email(address: str) -> bool:
+    return bool(address and EMAIL_PATTERN.match(address))
 
 def parse_assessment_objectives(objectives_text):
     """Parse assessment objectives text and extract individual objectives.
@@ -244,7 +293,7 @@ def service_token_required(required_scopes: list[str] | None = None):
 def enforce_device_and_user_authorization():
     # Allow public routes
     open_endpoints = {
-        'index', 'login', 'register', 'logout', 'static', 'device_pending'
+        'index', 'login', 'register', 'logout', 'static', 'device_pending', 'forgot_password'
     }
     if request.endpoint in open_endpoints:
         return None
@@ -334,15 +383,43 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
+        username = request.form['username'].strip()
+        email = request.form['email'].strip()
         password = request.form['password']
-        company = request.form['company']
-        
+        company = request.form['company'].strip()
+        security_question = request.form.get('security_question')
+        security_answer = request.form.get('security_answer', '')
+
+        if len(username) < 4:
+            flash('Username must be at least 4 characters long.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+        if not is_valid_email(email):
+            flash('Please enter a valid email address.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
         if User.query.filter_by(username=username).first():
             flash('Username already exists.', 'error')
-            return render_template('register.html')
-        
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+        if User.query.filter_by(email=email).first():
+            flash('Email address already exists.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+        if not validate_password_strength(password):
+            flash('Password must be at least 8 characters and include letters, numbers, and special characters.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+        allowed_questions = {q['id'] for q in SECURITY_QUESTIONS}
+        if security_question not in allowed_questions:
+            flash('Please select a security question.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+        normalized_answer = normalize_security_answer(security_answer)
+        if not normalized_answer:
+            flash('Please provide an answer to the security question.', 'error')
+            return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
         user = User(
             username=username,
             email=email,
@@ -350,12 +427,66 @@ def register():
             company=company
         )
         db.session.add(user)
+        db.session.flush()
+        security_profile = UserSecurity(
+            user_id=user.id,
+            question_key=security_question,
+            answer_hash=generate_password_hash(normalized_answer)
+        )
+        db.session.add(security_profile)
         db.session.commit()
         
         flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('login'))
     
-    return render_template('register.html')
+    return render_template('register.html', security_questions=SECURITY_QUESTIONS)
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        identifier = request.form.get('identifier', '').strip()
+        security_question = request.form.get('security_question')
+        security_answer = request.form.get('security_answer', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if not identifier:
+            flash('Please enter your username or email.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        user = User.query.filter(or_(User.username == identifier, User.email == identifier)).first()
+        if not user:
+            flash('No account found with the provided username or email.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        if not user.security_profile:
+            flash('Security question is not configured for this account. Please contact an administrator.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        if user.security_profile.question_key != security_question:
+            flash('Security question does not match our records.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        if not user.security_profile.verify_answer(security_answer):
+            flash('Security answer is incorrect.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        if not validate_password_strength(new_password):
+            flash('Password must be at least 8 characters and include letters, numbers, and special characters.', 'error')
+            return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
+
+        user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+
+        flash('Password reset successful. You can now log in.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('forgot_password.html', security_questions=SECURITY_QUESTIONS)
 
 @app.route('/logout')
 def logout():
@@ -857,7 +988,7 @@ def compliance_record(requirement_id):
             # Get completed objectives from form checkboxes
             objective_keys = [key for key in request.form.keys() if key.startswith('objective_')]
             completed_objectives = [key.replace('objective_', '') for key in objective_keys if request.form.get(key) == 'on']
-        
+
         if record:
             record.status = status
             record.notes = notes
@@ -2202,4 +2333,6 @@ if __name__ == '__main__':
     with app.app_context():
         init_database()
     app.run(debug=True)
+
+
 

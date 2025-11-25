@@ -11,7 +11,7 @@
     </div>
 
     <!-- Overall Progress Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div id="overallMetrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div class="bg-white overflow-hidden shadow-lg rounded-lg">
             <div class="p-5">
                 <div class="flex items-center">
@@ -86,7 +86,7 @@
     </div>
 
     <!-- Overall Progress Bar -->
-    <div class="bg-white shadow-lg rounded-lg p-6 mb-8">
+    <div id="overallProgress" class="bg-white shadow-lg rounded-lg p-6 mb-8">
         <h3 class="text-lg font-medium text-gray-900 mb-4">Overall Compliance Progress</h3>
         <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-gray-700">{{ "%.1f"|format(summary.overall_percentage) }}% Complete</span>
@@ -98,24 +98,51 @@
     </div>
 
     <!-- Charts Row -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+    <div id="chartsRow" class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         <!-- Progress by Level Chart -->
-        <div class="bg-white shadow-lg rounded-lg p-6">
+        <div id="levelChartCard" class="bg-white shadow-lg rounded-lg p-6">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Progress by CMMC Level</h3>
             <canvas id="levelChart" width="400" height="300"></canvas>
         </div>
 
         <!-- Progress by Domain Chart -->
-        <div class="bg-white shadow-lg rounded-lg p-6">
+        <div id="domainChartCard" class="bg-white shadow-lg rounded-lg p-6">
             <h3 class="text-lg font-medium text-gray-900 mb-4">Progress by All Domain</h3>
-            <canvas id="domainChart" width="400" height="300"></canvas>
+            {% if domain_progress %}
+                <canvas id="domainChart" width="400" height="300"></canvas>
+                <div class="mt-4">
+                    <p id="domainChartTitle" class="text-sm font-semibold text-gray-800"></p>
+                    <p id="domainChartStats" class="text-xs text-gray-500"></p>
+                </div>
+                <div class="flex items-center gap-4 mt-3 text-xs text-gray-600">
+                    <span class="flex items-center">
+                        <span id="domainCompletedSwatch" class="w-3 h-3 rounded-full mr-2 bg-blue-500"></span>
+                        Completed
+                    </span>
+                    <span class="flex items-center">
+                        <span class="w-3 h-3 rounded-full mr-2 bg-gray-300"></span>
+                        Remaining
+                    </span>
+                </div>
+                <div class="mt-4">
+                    <div id="domainButtons" class="flex flex-wrap gap-2">
+                        {% for domain_code in domain_progress.keys() %}
+                        <button type="button" data-domain-button="{{ domain_code }}" class="px-3 py-1 rounded-full border text-xs font-medium text-gray-700 bg-white hover:bg-blue-50 transition">
+                            {{ domain_code }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <p class="text-sm text-gray-500">No domain data available.</p>
+            {% endif %}
         </div>
     </div>
 
     <!-- Detailed Progress Tables -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <!-- Level Progress Table -->
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div id="levelTableSection" class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">CMMC Level Progress</h3>
             </div>
@@ -158,7 +185,7 @@
         </div>
 
         <!-- Domain Progress Table -->
-        <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+        <div id="domainTableSection" class="bg-white shadow-lg rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-medium text-gray-900">Domain Progress</h3>
             </div>
@@ -222,39 +249,89 @@
                     </div>
                 </a>
                 
-                <a href="#" onclick="generateReport()" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200">
+                <button type="button" onclick="generateReport()" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200 text-left">
                     <i class="fas fa-file-alt text-purple-600 text-xl mr-3"></i>
                     <div>
                         <div class="font-medium text-gray-900">Generate Report</div>
                         <div class="text-sm text-gray-500">Download compliance summary</div>
                     </div>
-                </a>
+                </button>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-// Level Progress Chart
+const levelProgressData = {{ level_progress | tojson }};
+const domainProgressData = {{ domain_progress | tojson }};
+const LIBRARY_SOURCES = {
+    html2canvas: [
+        'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+        'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+    ],
+    jspdf: [
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+    ]
+};
+
+const libraryLoadPromises = {};
+
+function loadScriptSequentially(key, urls) {
+    if (libraryLoadPromises[key]) {
+        return libraryLoadPromises[key];
+    }
+
+    libraryLoadPromises[key] = new Promise((resolve, reject) => {
+        const tryLoad = (index) => {
+            if (index >= urls.length) {
+                reject(new Error('All sources failed to load'));
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = urls[index];
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => {
+                script.remove();
+                tryLoad(index + 1);
+            };
+            document.head.appendChild(script);
+        };
+
+        tryLoad(0);
+    });
+
+    return libraryLoadPromises[key];
+}
+
+async function ensureLibrariesLoaded() {
+    if (!window.html2canvas) {
+        await loadScriptSequentially('html2canvas', LIBRARY_SOURCES.html2canvas);
+    }
+    if (!window.jspdf) {
+        await loadScriptSequentially('jspdf', LIBRARY_SOURCES.jspdf);
+    }
+}
+
+// Level chart config
+const sortedLevelKeys = Object.keys(levelProgressData).sort((a, b) => Number(a) - Number(b));
+const levelLabels = sortedLevelKeys.map(level => `Level ${level}`);
+const levelPercentages = sortedLevelKeys.map(level => levelProgressData[level].percentage || 0);
 const levelCtx = document.getElementById('levelChart').getContext('2d');
+const levelColors = ['#3B82F6', '#10B981', '#8B5CF6', '#F97316', '#EF4444'];
+
 const levelChart = new Chart(levelCtx, {
     type: 'bar',
     data: {
-        labels: [{% for level_num in level_progress.keys() %}'Level {{ level_num }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        labels: levelLabels,
         datasets: [{
             label: 'Compliance Progress (%)',
-            data: [{% for progress in level_progress.values() %}{{ progress.percentage }}{% if not loop.last %}, {% endif %}{% endfor %}],
-            backgroundColor: [
-                'rgba(59, 130, 246, 0.8)',
-                'rgba(16, 185, 129, 0.8)',
-                'rgba(139, 92, 246, 0.8)'
-            ],
-            borderColor: [
-                'rgba(59, 130, 246, 1)',
-                'rgba(16, 185, 129, 1)',
-                'rgba(139, 92, 246, 1)'
-            ],
-            borderWidth: 1
+            data: levelPercentages,
+            backgroundColor: levelLabels.map((_, index) => levelColors[index % levelColors.length]),
+            borderRadius: 6
         }]
     },
     options: {
@@ -264,57 +341,148 @@ const levelChart = new Chart(levelCtx, {
                 beginAtZero: true,
                 max: 100,
                 ticks: {
-                    callback: function(value) {
-                        return value + '%';
-                    }
+                    callback: value => `${value}%`
                 }
             }
         },
         plugins: {
-            legend: {
-                display: false
-            }
-        }
-    }
-});
-
-// Domain Progress Chart
-const domainCtx = document.getElementById('domainChart').getContext('2d');
-const domainChart = new Chart(domainCtx, {
-    type: 'doughnut',
-    data: {
-        labels: [{% for domain_code, progress in domain_progress.items() %}'{{ domain_code }}'{% if not loop.last %}, {% endif %}{% endfor %}],
-        datasets: [{
-            data: [{% for progress in domain_progress.values() %}{{ progress.percentage }}{% if not loop.last %}, {% endif %}{% endfor %}],
-            backgroundColor: [
-                '#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444',
-                '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280',
-                '#14B8A6', '#F472B6', '#A78BFA', '#FBBF24'
-            ]
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    usePointStyle: true,
-                    padding: 15
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: (context) => `${context.parsed.y.toFixed(1)}%`
                 }
             }
         }
     }
 });
 
-function generateReport() {
-    // This would typically trigger a report generation
-    alert('Report generation feature coming soon!');
+// Domain chart config
+let domainChart = null;
+const domainPalette = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6B7280', '#14B8A6', '#F472B6', '#A78BFA', '#FBBF24'];
+const domainColorMap = {};
+Object.keys(domainProgressData).forEach((code, index) => {
+    domainColorMap[code] = domainPalette[index % domainPalette.length];
+});
+
+if (Object.keys(domainProgressData).length) {
+    const domainCtx = document.getElementById('domainChart').getContext('2d');
+    domainChart = new Chart(domainCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Completed', 'Remaining'],
+            datasets: [{
+                data: [0, 100],
+                backgroundColor: ['#3B82F6', '#E5E7EB'],
+                borderWidth: 0,
+                hoverOffset: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            cutout: '70%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `${context.label}: ${context.parsed.toFixed(1)}%`
+                    }
+                }
+            }
+        }
+    });
+
+    const buttons = document.querySelectorAll('[data-domain-button]');
+    buttons.forEach(button => {
+        button.addEventListener('click', () => updateDomainChart(button.getAttribute('data-domain-button')));
+    });
+
+    const initialDomain = buttons.length ? buttons[0].getAttribute('data-domain-button') : null;
+    if (initialDomain) {
+        updateDomainChart(initialDomain);
+    }
+}
+
+function updateDomainChart(domainCode) {
+    const domainData = domainProgressData[domainCode];
+    if (!domainData || !domainChart) return;
+
+    const completed = Math.min(100, Math.max(0, domainData.percentage || 0));
+    const remaining = Math.max(0, 100 - completed);
+    const activeColor = domainColorMap[domainCode] || '#3B82F6';
+
+    domainChart.data.datasets[0].data = [completed, remaining];
+    domainChart.data.datasets[0].backgroundColor = [activeColor, '#E5E7EB'];
+    domainChart.update();
+
+    const titleEl = document.getElementById('domainChartTitle');
+    const statsEl = document.getElementById('domainChartStats');
+    const swatchEl = document.getElementById('domainCompletedSwatch');
+    if (titleEl) titleEl.textContent = `${domainCode} • ${domainData.name}`;
+    if (statsEl) statsEl.textContent = `${completed.toFixed(1)}% complete (${domainData.compliant} / ${domainData.total})`;
+    if (swatchEl) swatchEl.style.backgroundColor = activeColor;
+
+    document.querySelectorAll('[data-domain-button]').forEach(button => {
+        if (button.getAttribute('data-domain-button') === domainCode) {
+            button.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+            button.classList.remove('bg-white', 'text-gray-700');
+        } else {
+            button.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+            button.classList.add('bg-white', 'text-gray-700');
+        }
+    });
+}
+
+async function generateReport() {
+    const sections = [
+        { id: 'overallMetrics', title: 'Overall Metrics' },
+        { id: 'overallProgress', title: 'Overall Compliance Progress' },
+        { id: 'levelChartCard', title: 'Progress by CMMC Level' },
+        { id: 'domainChartCard', title: 'Progress by Domain' },
+        { id: 'levelTableSection', title: 'CMMC Level Progress' },
+        { id: 'domainTableSection', title: 'Domain Progress' }
+    ];
+
+    try {
+        await ensureLibrariesLoaded();
+    } catch (error) {
+        alert('Unable to load PDF libraries from any source. Please check your network connection and try again.\n\nDetails: ' + error.message);
+        return;
+    }
+
+    if (!window.jspdf || !window.html2canvas) {
+        alert('PDF generation libraries are still unavailable. Please refresh and try again.');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    let currentY = margin;
+
+    for (const section of sections) {
+        const element = document.getElementById(section.id);
+        if (!element) continue;
+
+        const canvas = await window.html2canvas(element, { scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        const imgWidth = pageWidth - margin * 2;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        if (currentY + imgHeight > pageHeight - margin) {
+            doc.addPage();
+            currentY = margin;
+        }
+
+        doc.setFontSize(12);
+        doc.text(section.title, margin, currentY);
+        currentY += 6;
+        doc.addImage(imgData, 'PNG', margin, currentY, imgWidth, imgHeight);
+        currentY += imgHeight + 8;
+    }
+
+    doc.save('cmmc-dashboard-report.pdf');
 }
 </script>
 {% endblock %}
-
-
-
-
-

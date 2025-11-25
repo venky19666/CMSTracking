@@ -16,27 +16,36 @@
                 Join the CMMC compliance community
             </p>
         </div>
-        <form class="mt-8 space-y-6" method="POST">
+        <form class="mt-8 space-y-6" method="POST" novalidate>
             <div class="space-y-4">
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700">Username</label>
-                    <input id="username" name="username" type="text" required 
-                           class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
-                           placeholder="Choose a username">
+                    <div class="mt-1 flex items-center space-x-3">
+                        <input id="username" name="username" type="text" required 
+                               class="flex-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                               placeholder="Choose a username"
+                               value="{{ request.form.get('username', '') }}">
+                        <span id="usernameStatus" class="text-xs text-gray-500 whitespace-nowrap">Min 4 characters</span>
+                    </div>
                 </div>
                 
                 <div>
                     <label for="email" class="block text-sm font-medium text-gray-700">Email Address</label>
-                    <input id="email" name="email" type="email" required 
-                           class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
-                           placeholder="Enter your email">
+                    <div class="mt-1 flex items-center space-x-3">
+                        <input id="email" name="email" type="email" required 
+                               class="flex-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
+                               placeholder="Enter your email"
+                               value="{{ request.form.get('email', '') }}">
+                        <span id="emailStatus" class="text-xs text-gray-500 whitespace-nowrap">Enter a valid email</span>
+                    </div>
                 </div>
                 
                 <div>
                     <label for="company" class="block text-sm font-medium text-gray-700">Company/Organization</label>
                     <input id="company" name="company" type="text" required 
                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
-                           placeholder="Your company name">
+                           placeholder="Your company name"
+                           value="{{ request.form.get('company', '') }}">
                 </div>
                 
                 <div>
@@ -44,6 +53,45 @@
                     <input id="password" name="password" type="password" required 
                            class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" 
                            placeholder="Create a strong password">
+                    <div class="mt-2 bg-gray-50 border border-gray-200 rounded-md p-3">
+                        <p class="text-xs font-medium text-gray-600 mb-2">Password must include:</p>
+                        <ul class="text-xs space-y-1">
+                            <li id="req-length" class="flex items-center text-gray-500">
+                                <i class="fas fa-circle mr-2 text-[8px]"></i> At least 8 characters
+                            </li>
+                            <li id="req-letter" class="flex items-center text-gray-500">
+                                <i class="fas fa-circle mr-2 text-[8px]"></i> At least one letter
+                            </li>
+                            <li id="req-number" class="flex items-center text-gray-500">
+                                <i class="fas fa-circle mr-2 text-[8px]"></i> At least one number
+                            </li>
+                            <li id="req-special" class="flex items-center text-gray-500">
+                                <i class="fas fa-circle mr-2 text-[8px]"></i> At least one special character
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="security_question" class="block text-sm font-medium text-gray-700">Security Question</label>
+                    <select id="security_question" name="security_question" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900 sm:text-sm bg-white">
+                        <option value="">Select a security question</option>
+                        {% for question in security_questions %}
+                            <option value="{{ question.id }}" {% if request.form.get('security_question') == question.id %}selected{% endif %}>
+                                {{ question.text }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">Used to verify your identity if you ever reset your password.</p>
+                </div>
+
+                <div>
+                    <label for="security_answer" class="block text-sm font-medium text-gray-700">Security Answer</label>
+                    <input id="security_answer" name="security_answer" type="text" required
+                           class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                           placeholder="Answer to your selected security question"
+                           value="{{ request.form.get('security_answer', '') }}">
                 </div>
             </div>
 
@@ -68,6 +116,93 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const usernameInput = document.getElementById('username');
+const emailInput = document.getElementById('email');
+const usernameStatus = document.getElementById('usernameStatus');
+const emailStatus = document.getElementById('emailStatus');
+const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+function setStatus(element, status, message) {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.remove('text-gray-500', 'text-red-600', 'text-green-600');
+    if (status === 'valid') {
+        element.classList.add('text-green-600');
+    } else if (status === 'invalid') {
+        element.classList.add('text-red-600');
+    } else {
+        element.classList.add('text-gray-500');
+    }
+}
+
+function updateUsernameStatus() {
+    if (!usernameInput || !usernameStatus) return;
+    const value = usernameInput.value.trim();
+    if (!value) {
+        setStatus(usernameStatus, 'default', 'Required');
+    } else if (value.length < 4) {
+        setStatus(usernameStatus, 'invalid', 'Min 4 characters');
+    } else {
+        setStatus(usernameStatus, 'valid', 'Perfect');
+    }
+}
+
+function updateEmailStatus() {
+    if (!emailInput || !emailStatus) return;
+    const value = emailInput.value.trim();
+    if (!value) {
+        setStatus(emailStatus, 'default', 'Required');
+    } else if (!emailRegex.test(value)) {
+        setStatus(emailStatus, 'invalid', 'Invalid email format');
+    } else {
+        setStatus(emailStatus, 'valid', 'Perfect');
+    }
+}
+
+if (usernameInput) {
+    usernameInput.addEventListener('input', updateUsernameStatus);
+    updateUsernameStatus();
+}
+
+if (emailInput) {
+    emailInput.addEventListener('input', updateEmailStatus);
+    updateEmailStatus();
+}
+
+const passwordInput = document.getElementById('password');
+const requirements = {
+    length: { element: document.getElementById('req-length'), test: value => value.length >= 8 },
+    letter: { element: document.getElementById('req-letter'), test: value => /[A-Za-z]/.test(value) },
+    number: { element: document.getElementById('req-number'), test: value => /\d/.test(value) },
+    special: { element: document.getElementById('req-special'), test: value => /[^A-Za-z0-9]/.test(value) }
+};
+
+function updateRequirementStyles(value) {
+    Object.values(requirements).forEach(requirement => {
+        if (requirement.test(value)) {
+            requirement.element.classList.remove('text-gray-500');
+            requirement.element.classList.add('text-green-600');
+            requirement.element.querySelector('i').classList.remove('fa-circle');
+            requirement.element.querySelector('i').classList.add('fa-check');
+        } else {
+            requirement.element.classList.add('text-gray-500');
+            requirement.element.classList.remove('text-green-600');
+            requirement.element.querySelector('i').classList.add('fa-circle');
+            requirement.element.querySelector('i').classList.remove('fa-check');
+        }
+    });
+}
+
+if (passwordInput) {
+    passwordInput.addEventListener('input', (event) => {
+        updateRequirementStyles(event.target.value);
+    });
+}
+</script>
 {% endblock %}
 
 
